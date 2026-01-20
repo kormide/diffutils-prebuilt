@@ -1,0 +1,19 @@
+platform(
+    name = "linux_x86_64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+        "@//linker_config:musl",
+    ],
+    visibility = ["//:__subpackages__"],
+)
+
+platform(
+    name = "linux_aarch64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:aarch64",
+        "@//linker_config:musl",
+    ],
+    visibility = ["//:__subpackages__"],
+)

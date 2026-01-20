@@ -1,0 +1,24 @@
+load("@bazel_lib//lib:transitions.bzl", "platform_transition_filegroup")
+
+PLATFORMS = [
+    "//platforms:linux_x86_64",
+    "//platforms:linux_aarch64",
+]
+
+[
+    platform_transition_filegroup(
+        name = "for_{}".format(p.split(":")[1]),
+        srcs = ["@crates//:diffutils__diffutils"],
+        tags = ["manual"],
+        target_platform = p,
+    )
+    for p in PLATFORMS
+]
+
+filegroup(
+    name = "for_all_platforms",
+    srcs = [":for_{}".format(p.split(":")[1]) for p in PLATFORMS],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+)
