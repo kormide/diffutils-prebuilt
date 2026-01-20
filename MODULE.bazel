@@ -1,0 +1,12 @@
+bazel_dep(name = "bazel_lib", version = "3.1.1")
+bazel_dep(name = "diffutils", version = "3.12")
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "toolchains_llvm_bootstrapped", version = "0.5.7")
+
+git_override(
+    module_name = "diffutils",
+    remote = "https://github.com/kormide/diffutils-bcr.git",
+    commit = "2279a8d16b29a6d73a1816e3779fcf2705715c93",
+)
+
+register_toolchains("@toolchains_llvm_bootstrapped//toolchain:all")

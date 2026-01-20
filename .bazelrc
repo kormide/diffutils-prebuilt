@@ -1,0 +1,10 @@
+common --enable_platform_specific_config
+
+# Determines whether C++ binaries will be linked dynamically, interacting with the linkstatic attribute on build rules.
+# off: Links all targets in mostly static mode. If -static is set in linkopts, targets will change to fully static.
+build --dynamic_mode=off
+
+# Don't clobber bazel-out/[platform]/bin
+build --experimental_platform_in_output_dir
+build --incompatible_strict_action_env
+build --compilation_mode=opt
