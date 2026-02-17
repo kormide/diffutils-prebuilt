@@ -1,7 +1,12 @@
 load("@bazel_lib//lib:transitions.bzl", "platform_transition_filegroup")
 
 PLATFORMS = [
-    "@toolchains_llvm_bootstrapped//platforms:linux_x86_64_gnu.2.39",
+    "@toolchains_llvm_bootstrapped//platforms:linux_x86_64_musl",
+    "@toolchains_llvm_bootstrapped//platforms:linux_arm64_musl",
+    "@toolchains_llvm_bootstrapped//platforms:macos_amd64",
+    "@toolchains_llvm_bootstrapped//platforms:macos_arm64",
+    "@toolchains_llvm_bootstrapped//platforms:windows_amd64",
+    "@toolchains_llvm_bootstrapped//platforms:windows_arm64",
 ]
 
 [
