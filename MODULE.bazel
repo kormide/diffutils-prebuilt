@@ -7,6 +7,15 @@ git_override(
     module_name = "diffutils",
     remote = "https://github.com/kormide/diffutils-bcr.git",
     commit = "2279a8d16b29a6d73a1816e3779fcf2705715c93",
+    patches = ["//patches:diffutils-musl-fixes.patch"],
+    patch_strip = 1,
+)
+
+single_version_override(
+    module_name = "sed",
+    version = "4.9.bcr.3",
+    patches = ["//patches:sed-include-order-fix.patch"],
+    patch_strip = 1,
 )
 
 register_toolchains("@toolchains_llvm_bootstrapped//toolchain:all")
