@@ -6,7 +6,7 @@ bazel_dep(name = "toolchains_llvm_bootstrapped", version = "0.5.7")
 git_override(
     module_name = "diffutils",
     remote = "https://github.com/kormide/diffutils-bcr.git",
-    commit = "2ed5567439684fefd77c4a9401406c4c5b511e4b",
+    commit = "8e2b07e1b51c8680b7c7ad07b88f300f19f55b8d",
     patches = ["//patches:diffutils-musl-fixes.patch"],
     patch_strip = 1,
 )
