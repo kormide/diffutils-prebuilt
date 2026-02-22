@@ -1,0 +1,4 @@
+exports_files([
+    "diffutils-musl-fixes.patch",
+    "sed-include-order-fix.patch",
+])

@@ -1,0 +1,4816 @@
+diff --git a/config_linux.bzl b/config_linux.bzl
+index 13ac964..9f7462a 100644
+--- a/config_linux.bzl
++++ b/config_linux.bzl
+@@ -23,6 +23,20 @@ AUTOMAKE_VARIABLES = {
+     "@''GNULIBHEADERS_OVERRIDE_CHAR8_T''@": "0",
+     "@''GNULIBHEADERS_OVERRIDE_WINT_T''@": "0",
+     "@''GNULIB_ABORT_DEBUG''@": "0",
++    "@''GL_STDC_BIT_CEIL''@": "0",
++    "@''GL_STDC_BIT_FLOOR''@": "0",
++    "@''GL_STDC_BIT_WIDTH''@": "1",
++    "@''GL_STDC_COUNT_ONES''@": "0",
++    "@''GL_STDC_COUNT_ZEROS''@": "0",
++    "@''GL_STDC_FIRST_LEADING_ONE''@": "0",
++    "@''GL_STDC_FIRST_LEADING_ZERO''@": "0",
++    "@''GL_STDC_FIRST_TRAILING_ONE''@": "0",
++    "@''GL_STDC_FIRST_TRAILING_ZERO''@": "0",
++    "@''GL_STDC_HAS_SINGLE_BIT''@": "0",
++    "@''GL_STDC_LEADING_ONES''@": "0",
++    "@''GL_STDC_LEADING_ZEROS''@": "1",
++    "@''GL_STDC_TRAILING_ONES''@": "0",
++    "@''GL_STDC_TRAILING_ZEROS''@": "0",
+     "@''GNULIB_ACCESS''@": "0",
+     "@''GNULIB_ALIGNED_ALLOC''@": "0",
+     "@''GNULIB_ALPHASORT''@": "0",
+@@ -674,9 +688,9 @@ AUTOMAKE_VARIABLES = {
+     "@''HAVE_DPRINTF''@": "1",
+     "@''HAVE_DUP3''@": "1",
+     "@''HAVE_DUPLOCALE''@": "1",
+-    "@''HAVE_ERROR''@": "1",
+-    "@''HAVE_ERROR_AT_LINE''@": "1",
+-    "@''HAVE_ERROR_H''@": "1",
++    "@''HAVE_ERROR''@": "0",
++    "@''HAVE_ERROR_AT_LINE''@": "0",
++    "@''HAVE_ERROR_H''@": "0",
+     "@''HAVE_EUIDACCESS''@": "1",
+     "@''HAVE_EXECVPE''@": "1",
+     "@''HAVE_EXPLICIT_BZERO''@": "1",
+diff --git a/lib/BUILD.bazel b/lib/BUILD.bazel
+index 03d8062..9587fa0 100644
+--- a/lib/BUILD.bazel
++++ b/lib/BUILD.bazel
+@@ -162,6 +162,7 @@ libdiffutils_a_SOURCES = [
+     "//conditions:default": [
+         "btowc.c",
+         "chdir-long.c",
++        "error.c",
+         "fcntl.c",
+         "getprogname.c",
+         "mbrtoc32.c",
+@@ -170,8 +171,12 @@ libdiffutils_a_SOURCES = [
+         "nl_langinfo.c",
+         "realloc.c",
+         "reallocarray.c",
++        "regex.c",
+         "sigsegv.c",
+         "stackvma.c",
++        "stdbit.c",
++        "stdc_bit_width.c",
++        "stdc_leading_zeros.c",
+         "time_rz.c",
+         "unicase/tolower.c",
+         "unictype/ctype_alnum.c",
+@@ -246,8 +251,10 @@ BUILT_SOURCES = [
+         "alloca.h",
+         "limits.h",
+         "sigsegv.h",
++        "stdbit.h",
+         "stdckdint.h",
+         "stddef.h",
++        "stdint.h",
+         "unicase.h",
+         "unictype.h",
+         "uninorm.h",
+@@ -398,7 +405,13 @@ cc_library(
+             "regexec.c",
+             "malloc/dynarray-skeleton.c",
+         ],
+-        "//conditions:default": [],
++        "//conditions:default": [
++            "regex_internal.c",
++            "strtol.c",
++            "regcomp.c",
++            "regexec.c",
++            "malloc/dynarray-skeleton.c",
++        ],
+     }),
+     visibility = ["//src:__subpackages__"],
+     deps = [
+@@ -480,8 +493,11 @@ cc_library(
+         "intprops.h",
+         "intprops-internal.h",
+         "libc-config.h",
++        "limits.h",
+         "mktime-internal.h",
+         "stdckdint.h",
++        "stdint.h",
++        "time.h",
+     ],
+     includes = ["."],
+ )
+@@ -510,4 +526,4 @@ config_setting(
+         "@platforms//os:linux",
+         "@platforms//cpu:x86_64",
+     ],
+-)
++)
+diff --git a/lib/allocator.c b/lib/allocator.c
+index 5f5c720..1c001f6 100644
+--- a/lib/allocator.c
++++ b/lib/allocator.c
+@@ -18,5 +18,5 @@
+ #define _GL_USE_STDLIB_ALLOC 1
+ #include <config.h>
+ #include "allocator.h"
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ struct allocator const stdlib_allocator = { malloc, realloc, free, NULL };
+diff --git a/lib/allocator.h b/lib/allocator.h
+index e7aaa82..b021c6a 100644
+--- a/lib/allocator.h
++++ b/lib/allocator.h
+@@ -20,7 +20,7 @@
+ #ifndef _GL_ALLOCATOR_H
+ #define _GL_ALLOCATOR_H
+ 
+-#include <stddef.h>
++#include "lib/stddef.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/argmatch.c b/lib/argmatch.c
+index 0aee39c..c146fa0 100644
+--- a/lib/argmatch.c
++++ b/lib/argmatch.c
+@@ -24,13 +24,13 @@
+ /* Specification.  */
+ #include "argmatch.h"
+ 
+-#include <stdio.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdio.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ #define _(msgid) dgettext ("gnulib", msgid)
+ 
+-#include <error.h>
++#include "lib/error.h"
+ #include "quotearg.h"
+ 
+ #if USE_UNLOCKED_IO
+diff --git a/lib/argmatch.h b/lib/argmatch.h
+index 54bd1fc..be6c61a 100644
+--- a/lib/argmatch.h
++++ b/lib/argmatch.h
+@@ -27,10 +27,10 @@
+ #  error "Please include config.h first."
+ # endif
+ 
+-# include <limits.h>
+-# include <stddef.h>
+-# include <stdio.h>
+-# include <string.h> /* memcmp */
++# include "lib/limits.h"
++# include "lib/stddef.h"
++# include "lib/stdio.h"
++# include "lib/string.h" /* memcmp */
+ 
+ # include "gettext.h"
+ # include "quote.h"
+diff --git a/lib/basename-lgpl.c b/lib/basename-lgpl.c
+index 2aecb0d..52aaa17 100644
+--- a/lib/basename-lgpl.c
++++ b/lib/basename-lgpl.c
+@@ -21,7 +21,7 @@
+ /* Specification.  */
+ #include "basename-lgpl.h"
+ 
+-#include <string.h>
++#include "lib/string.h"
+ 
+ #include "filename.h"
+ 
+diff --git a/lib/basename-lgpl.h b/lib/basename-lgpl.h
+index 120bd1c..55f2a14 100644
+--- a/lib/basename-lgpl.h
++++ b/lib/basename-lgpl.h
+@@ -24,7 +24,7 @@
+  #error "Please include config.h first."
+ #endif
+ 
+-#include <stddef.h>
++#include "lib/stddef.h"
+ 
+ #ifndef DOUBLE_SLASH_IS_DISTINCT_ROOT
+ # define DOUBLE_SLASH_IS_DISTINCT_ROOT 0
+diff --git a/lib/basename.c b/lib/basename.c
+index 9d2852d..b4ccaf3 100644
+--- a/lib/basename.c
++++ b/lib/basename.c
+@@ -20,7 +20,7 @@
+ 
+ #include "dirname.h"
+ 
+-#include <string.h>
++#include "lib/string.h"
+ #include "xalloc.h"
+ 
+ char *
+diff --git a/lib/binary-io.c b/lib/binary-io.c
+index d2937b8..8b6f4e4 100644
+--- a/lib/binary-io.c
++++ b/lib/binary-io.c
+@@ -20,7 +20,7 @@
+ #include "binary-io.h"
+ 
+ #if defined __DJGPP__ || defined __EMX__
+-# include <unistd.h>
++# include "lib/unistd.h"
+ 
+ int
+ set_binary_mode (int fd, int mode)
+diff --git a/lib/binary-io.h b/lib/binary-io.h
+index 20b9b5d..a920842 100644
+--- a/lib/binary-io.h
++++ b/lib/binary-io.h
+@@ -24,11 +24,11 @@
+ 
+ /* For systems that distinguish between text and binary I/O.
+    O_BINARY is guaranteed by the gnulib <fcntl.h>. */
+-#include <fcntl.h>
++#include "lib/fcntl.h"
+ 
+ /* The MSVC7 <stdio.h> doesn't like to be included after '#define fileno ...',
+    so we include it here first.  */
+-#include <stdio.h>
++#include "lib/stdio.h"
+ 
+ _GL_INLINE_HEADER_BEGIN
+ #ifndef BINARY_IO_INLINE
+diff --git a/lib/bitrotate.h b/lib/bitrotate.h
+index f855ad7..b8099b7 100644
+--- a/lib/bitrotate.h
++++ b/lib/bitrotate.h
+@@ -24,9 +24,9 @@
+  #error "Please include config.h first."
+ #endif
+ 
+-#include <limits.h>
+-#include <stdint.h>
+-#include <sys/types.h>
++#include "lib/limits.h"
++#include "lib/stdint.h"
++#include "lib/sys/types.h"
+ 
+ _GL_INLINE_HEADER_BEGIN
+ #ifndef BITROTATE_INLINE
+diff --git a/lib/btoc32.c b/lib/btoc32.c
+index 28792cb..8ccb2a8 100644
+--- a/lib/btoc32.c
++++ b/lib/btoc32.c
+@@ -20,11 +20,11 @@
+ 
+ #define IN_BTOC32
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+-#include <stdio.h>
+-#include <string.h>
+-#include <wchar.h>
++#include "lib/stdio.h"
++#include "lib/string.h"
++#include "lib/wchar.h"
+ 
+ #if GL_CHAR32_T_IS_UNICODE
+ # include "lc-charset-unicode.h"
+diff --git a/lib/btowc.c b/lib/btowc.c
+index 891347d..023eeb7 100644
+--- a/lib/btowc.c
++++ b/lib/btowc.c
+@@ -18,11 +18,11 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <wchar.h>
++#include "lib/wchar.h"
+ 
+-#include <stdio.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdio.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ wint_t
+ btowc (int c)
+diff --git a/lib/c-stack.c b/lib/c-stack.c
+index 794ef95..b080314 100644
+--- a/lib/c-stack.c
++++ b/lib/c-stack.c
+@@ -38,15 +38,15 @@
+ #include "c-stack.h"
+ 
+ #include <errno.h>
+-#include <inttypes.h>
+-#include <signal.h>
+-#include <stddef.h>
+-#include <stdlib.h>
+-#include <string.h>
+-#include <unistd.h>
++#include "lib/inttypes.h"
++#include "lib/signal.h"
++#include "lib/stddef.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
++#include "lib/unistd.h"
+ 
+ #if DEBUG
+-# include <stdio.h>
++# include "lib/stdio.h"
+ #endif
+ 
+ #include <sigsegv.h>
+diff --git a/lib/c-strcase.h b/lib/c-strcase.h
+index 9bef992..995119c 100644
+--- a/lib/c-strcase.h
++++ b/lib/c-strcase.h
+@@ -23,7 +23,7 @@
+  #error "Please include config.h first."
+ #endif
+ 
+-#include <stddef.h>
++#include "lib/stddef.h"
+ 
+ 
+ /* The functions defined in this file assume the "C" locale and a character
+diff --git a/lib/c-strcasecmp.c b/lib/c-strcasecmp.c
+index 2d963c3..1252943 100644
+--- a/lib/c-strcasecmp.c
++++ b/lib/c-strcasecmp.c
+@@ -19,7 +19,7 @@
+ /* Specification.  */
+ #include "c-strcase.h"
+ 
+-#include <limits.h>
++#include "lib/limits.h"
+ 
+ #include "c-ctype.h"
+ 
+diff --git a/lib/c32_apply_type_test.c b/lib/c32_apply_type_test.c
+index 54afa86..17a6fa2 100644
+--- a/lib/c32_apply_type_test.c
++++ b/lib/c32_apply_type_test.c
+@@ -20,10 +20,10 @@
+ 
+ #define IN_C32_APPLY_TYPE_TEST
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+-#include <string.h>
+-#include <wctype.h>
++#include "lib/string.h"
++#include "lib/wctype.h"
+ 
+ #if _GL_WCHAR_T_IS_UCS4
+ _GL_EXTERN_INLINE
+diff --git a/lib/c32_get_type_test.c b/lib/c32_get_type_test.c
+index 7bfa922..d6ac1f8 100644
+--- a/lib/c32_get_type_test.c
++++ b/lib/c32_get_type_test.c
+@@ -20,10 +20,10 @@
+ 
+ #define IN_C32_GET_TYPE_TEST
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+-#include <string.h>
+-#include <wctype.h>
++#include "lib/string.h"
++#include "lib/wctype.h"
+ 
+ #if _GL_WCHAR_T_IS_UCS4
+ _GL_EXTERN_INLINE
+diff --git a/lib/c32is-impl.h b/lib/c32is-impl.h
+index 8366035..9a998b6 100644
+--- a/lib/c32is-impl.h
++++ b/lib/c32is-impl.h
+@@ -16,8 +16,8 @@
+ 
+ /* Written by Bruno Haible <bruno@clisp.org>, 2020.  */
+ 
+-#include <wchar.h>
+-#include <wctype.h>
++#include "lib/wchar.h"
++#include "lib/wctype.h"
+ 
+ #ifdef __CYGWIN__
+ # include <cygwin/version.h>
+diff --git a/lib/c32isalnum.c b/lib/c32isalnum.c
+index 7d0ebcf..50be228 100644
+--- a/lib/c32isalnum.c
++++ b/lib/c32isalnum.c
+@@ -18,7 +18,7 @@
+ 
+ #define IN_C32ISALNUM
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+ #define FUNC c32isalnum
+ #define WCHAR_FUNC iswalnum
+diff --git a/lib/c32isalpha.c b/lib/c32isalpha.c
+index 308fd76..6483c54 100644
+--- a/lib/c32isalpha.c
++++ b/lib/c32isalpha.c
+@@ -18,7 +18,7 @@
+ 
+ #define IN_C32ISALPHA
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+ #define FUNC c32isalpha
+ #define WCHAR_FUNC iswalpha
+diff --git a/lib/c32isblank.c b/lib/c32isblank.c
+index 1a03c2d..486140b 100644
+--- a/lib/c32isblank.c
++++ b/lib/c32isblank.c
+@@ -18,7 +18,7 @@
+ 
+ #define IN_C32ISBLANK
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+ #define FUNC c32isblank
+ #define WCHAR_FUNC iswblank
+diff --git a/lib/c32iscntrl.c b/lib/c32iscntrl.c
+index 1d00408..6a0039d 100644
+--- a/lib/c32iscntrl.c
++++ b/lib/c32iscntrl.c
+@@ -18,7 +18,7 @@
+ 
+ #define IN_C32ISCNTRL
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+ #define FUNC c32iscntrl
+ #define WCHAR_FUNC iswcntrl
+diff --git a/lib/c32isdigit.c b/lib/c32isdigit.c
+index 7d3bda8..430b3b3 100644
+--- a/lib/c32isdigit.c
++++ b/lib/c32isdigit.c
+@@ -18,7 +18,7 @@
+ 
+ #define IN_C32ISDIGIT
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+ #define FUNC c32isdigit
+ #define WCHAR_FUNC iswdigit
+diff --git a/lib/c32isgraph.c b/lib/c32isgraph.c
+index 8b68ae3..a37dff8 100644
+--- a/lib/c32isgraph.c
++++ b/lib/c32isgraph.c
+@@ -18,7 +18,7 @@
+ 
+ #define IN_C32ISGRAPH
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+ #define FUNC c32isgraph
+ #define WCHAR_FUNC iswgraph
+diff --git a/lib/c32islower.c b/lib/c32islower.c
+index 1ce08cf..59ac8a9 100644
+--- a/lib/c32islower.c
++++ b/lib/c32islower.c
+@@ -18,7 +18,7 @@
+ 
+ #define IN_C32ISLOWER
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+ #define FUNC c32islower
+ #define WCHAR_FUNC iswlower
+diff --git a/lib/c32isprint.c b/lib/c32isprint.c
+index d47ce1f..7af6a3a 100644
+--- a/lib/c32isprint.c
++++ b/lib/c32isprint.c
+@@ -18,7 +18,7 @@
+ 
+ #define IN_C32ISPRINT
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+ #define FUNC c32isprint
+ #define WCHAR_FUNC iswprint
+diff --git a/lib/c32ispunct.c b/lib/c32ispunct.c
+index 41ac3d7..7b04b6e 100644
+--- a/lib/c32ispunct.c
++++ b/lib/c32ispunct.c
+@@ -18,7 +18,7 @@
+ 
+ #define IN_C32ISPUNCT
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+ #define FUNC c32ispunct
+ #define WCHAR_FUNC iswpunct
+diff --git a/lib/c32isspace.c b/lib/c32isspace.c
+index 2393142..75a1177 100644
+--- a/lib/c32isspace.c
++++ b/lib/c32isspace.c
+@@ -18,7 +18,7 @@
+ 
+ #define IN_C32ISSPACE
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+ #define FUNC c32isspace
+ #define WCHAR_FUNC iswspace
+diff --git a/lib/c32isupper.c b/lib/c32isupper.c
+index bfe4a14..1da390f 100644
+--- a/lib/c32isupper.c
++++ b/lib/c32isupper.c
+@@ -18,7 +18,7 @@
+ 
+ #define IN_C32ISUPPER
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+ #define FUNC c32isupper
+ #define WCHAR_FUNC iswupper
+diff --git a/lib/c32isxdigit.c b/lib/c32isxdigit.c
+index b38d7f1..eec56fa 100644
+--- a/lib/c32isxdigit.c
++++ b/lib/c32isxdigit.c
+@@ -18,7 +18,7 @@
+ 
+ #define IN_C32ISXDIGIT
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+ #define FUNC c32isxdigit
+ #define WCHAR_FUNC iswxdigit
+diff --git a/lib/c32to-impl.h b/lib/c32to-impl.h
+index a63a25b..b44efd5 100644
+--- a/lib/c32to-impl.h
++++ b/lib/c32to-impl.h
+@@ -16,8 +16,8 @@
+ 
+ /* Written by Bruno Haible <bruno@clisp.org>, 2023.  */
+ 
+-#include <wchar.h>
+-#include <wctype.h>
++#include "lib/wchar.h"
++#include "lib/wctype.h"
+ 
+ #if GNULIB_defined_mbstate_t
+ # include "localcharset.h"
+diff --git a/lib/c32tolower.c b/lib/c32tolower.c
+index a0b0523..a1a551c 100644
+--- a/lib/c32tolower.c
++++ b/lib/c32tolower.c
+@@ -18,7 +18,7 @@
+ 
+ #define IN_C32TOLOWER
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+ #define FUNC c32tolower
+ #define WCHAR_FUNC towlower
+diff --git a/lib/c32width.c b/lib/c32width.c
+index 442a432..47ec60e 100644
+--- a/lib/c32width.c
++++ b/lib/c32width.c
+@@ -20,9 +20,9 @@
+ 
+ #define IN_C32WIDTH
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+-#include <wchar.h>
++#include "lib/wchar.h"
+ 
+ #ifdef __CYGWIN__
+ # include <cygwin/version.h>
+diff --git a/lib/calloc.c b/lib/calloc.c
+index 5258c5d..3a0abd8 100644
+--- a/lib/calloc.c
++++ b/lib/calloc.c
+@@ -22,10 +22,10 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #include <errno.h>
+-#include <stdckdint.h>
++#include "lib/stdckdint.h"
+ 
+ /* Allocate and zero-fill an NxS-byte block of memory from the heap,
+    even if N or S is zero.  */
+diff --git a/lib/careadlinkat.c b/lib/careadlinkat.c
+index 9ec3ca3..ab25031 100644
+--- a/lib/careadlinkat.c
++++ b/lib/careadlinkat.c
+@@ -26,9 +26,9 @@
+ #include "minmax.h"
+ 
+ #include <errno.h>
+-#include <limits.h>
+-#include <string.h>
+-#include <unistd.h>
++#include "lib/limits.h"
++#include "lib/string.h"
++#include "lib/unistd.h"
+ 
+ /* Define this independently so that stdint.h is not a prerequisite.  */
+ #ifndef SIZE_MAX
+diff --git a/lib/careadlinkat.h b/lib/careadlinkat.h
+index 8ef3b4b..904566a 100644
+--- a/lib/careadlinkat.h
++++ b/lib/careadlinkat.h
+@@ -25,8 +25,8 @@
+  #error "Please include config.h first."
+ #endif
+ 
+-#include <fcntl.h>
+-#include <unistd.h>
++#include "lib/fcntl.h"
++#include "lib/unistd.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/chdir-long.c b/lib/chdir-long.c
+index a7b5599..d991fab 100644
+--- a/lib/chdir-long.c
++++ b/lib/chdir-long.c
+@@ -21,10 +21,10 @@
+ #include "chdir-long.h"
+ 
+ #include <errno.h>
+-#include <fcntl.h>
+-#include <stdlib.h>
+-#include <string.h>
+-#include <stdio.h>
++#include "lib/fcntl.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
++#include "lib/stdio.h"
+ 
+ #include "assure.h"
+ 
+@@ -209,7 +209,7 @@ chdir_long (char *dir)
+ #if TEST_CHDIR
+ 
+ # include "closeout.h"
+-# include <error.h>
++# include "lib/error.h"
+ 
+ int
+ main (int argc, char *argv[])
+diff --git a/lib/chdir-long.h b/lib/chdir-long.h
+index 2a71210..679656a 100644
+--- a/lib/chdir-long.h
++++ b/lib/chdir-long.h
+@@ -16,8 +16,8 @@
+ 
+ /* Written by Jim Meyering.  */
+ 
+-#include <unistd.h>
+-#include <limits.h>
++#include "lib/unistd.h"
++#include "lib/limits.h"
+ 
+ #include "pathmax.h"
+ 
+diff --git a/lib/cloexec.c b/lib/cloexec.c
+index 8ab5591..ffce3aa 100644
+--- a/lib/cloexec.c
++++ b/lib/cloexec.c
+@@ -22,8 +22,8 @@
+ #include "cloexec.h"
+ 
+ #include <errno.h>
+-#include <fcntl.h>
+-#include <unistd.h>
++#include "lib/fcntl.h"
++#include "lib/unistd.h"
+ 
+ /* Set the 'FD_CLOEXEC' flag of DESC if VALUE is true,
+    or clear the flag if VALUE is false.
+diff --git a/lib/close.c b/lib/close.c
+index 3bcfc47..47b96e7 100644
+--- a/lib/close.c
++++ b/lib/close.c
+@@ -17,7 +17,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <unistd.h>
++#include "lib/unistd.h"
+ 
+ #include <errno.h>
+ 
+diff --git a/lib/closedir.c b/lib/closedir.c
+index d689d06..3545b62 100644
+--- a/lib/closedir.c
++++ b/lib/closedir.c
+@@ -17,13 +17,13 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <dirent.h>
++#include "lib/dirent.h"
+ 
+ #if REPLACE_FCHDIR
+-# include <unistd.h>
++# include "lib/unistd.h"
+ #endif
+ 
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #if HAVE_CLOSEDIR
+ 
+diff --git a/lib/cmpbuf.c b/lib/cmpbuf.c
+index 8094a35..27cd30a 100644
+--- a/lib/cmpbuf.c
++++ b/lib/cmpbuf.c
+@@ -21,13 +21,13 @@
+ #include "cmpbuf.h"
+ 
+ #include <errno.h>
+-#include <limits.h>
+-#include <signal.h>
+-#include <stdckdint.h>
+-#include <unistd.h>
+-#include <stdint.h>
+-#include <inttypes.h>
+-#include <sys/types.h>
++#include "lib/limits.h"
++#include "lib/signal.h"
++#include "lib/stdckdint.h"
++#include "lib/unistd.h"
++#include "lib/stdint.h"
++#include "lib/inttypes.h"
++#include "lib/sys/types.h"
+ 
+ #include "intprops.h"
+ #include "minmax.h"
+diff --git a/lib/cmpbuf.h b/lib/cmpbuf.h
+index 505934c..9798c09 100644
+--- a/lib/cmpbuf.h
++++ b/lib/cmpbuf.h
+@@ -16,6 +16,6 @@
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
+ 
+ #include "idx.h"
+-#include <stddef.h>
++#include "lib/stddef.h"
+ ptrdiff_t block_read (int, char *, idx_t);
+ idx_t buffer_lcm (idx_t, idx_t, idx_t) _GL_ATTRIBUTE_CONST;
+diff --git a/lib/config_linux_amd64.h b/lib/config_linux_amd64.h
+index 9b52897..0ac7025 100644
+--- a/lib/config_linux_amd64.h
++++ b/lib/config_linux_amd64.h
+@@ -2288,7 +2288,7 @@
+ #define STDC_HEADERS 1
+ 
+ /* Define to 1 if strerror_r returns char *. */
+-#define STRERROR_R_CHAR_P 1
++#define STRERROR_R_CHAR_P 0
+ 
+ /* Define to 1 if time_t is signed. */
+ #define TIME_T_IS_SIGNED 1
+diff --git a/lib/config_linux_arm64.h b/lib/config_linux_arm64.h
+index 03622f0..5412fcc 100644
+--- a/lib/config_linux_arm64.h
++++ b/lib/config_linux_arm64.h
+@@ -2288,7 +2288,7 @@
+ #define STDC_HEADERS 1
+ 
+ /* Define to 1 if strerror_r returns char *. */
+-#define STRERROR_R_CHAR_P 1
++#define STRERROR_R_CHAR_P 0
+ 
+ /* Define to 1 if time_t is signed. */
+ #define TIME_T_IS_SIGNED 1
+diff --git a/lib/diagnose.c b/lib/diagnose.c
+index 58a1e42..cf0e10e 100644
+--- a/lib/diagnose.c
++++ b/lib/diagnose.c
+@@ -25,7 +25,7 @@
+ #include "progname.h"
+ #include "quotearg.h"
+ 
+-#include <error.h>
++#include "lib/error.h"
+ 
+ /* In slot N return NAME, quoted for the shell if NAME has unusual characters.
+    This is for messages that historically did not quote names,
+diff --git a/lib/diffseq.h b/lib/diffseq.h
+index 8a823f9..ce9bf04 100644
+--- a/lib/diffseq.h
++++ b/lib/diffseq.h
+@@ -73,7 +73,7 @@
+                              yvec[yoff] and tests these elements for equality.
+ 
+    Before including this file, you also need to include:
+-     #include <limits.h>
++     #include "lib/limits.h"
+      #include "minmax.h"
+  */
+ 
+diff --git a/lib/dirfd.c b/lib/dirfd.c
+index ee90e71..67e051c 100644
+--- a/lib/dirfd.c
++++ b/lib/dirfd.c
+@@ -19,7 +19,7 @@
+ 
+ #include <config.h>
+ 
+-#include <dirent.h>
++#include "lib/dirent.h"
+ #include <errno.h>
+ 
+ #if GNULIB_defined_DIR
+diff --git a/lib/dirname-lgpl.c b/lib/dirname-lgpl.c
+index 9e0ec56..3b1b2bb 100644
+--- a/lib/dirname-lgpl.c
++++ b/lib/dirname-lgpl.c
+@@ -20,8 +20,8 @@
+ 
+ #include "dirname.h"
+ 
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ /* Return the length of the prefix of FILE that will be used by
+    dir_name.  If FILE is in the working directory, this returns zero
+diff --git a/lib/dirname.c b/lib/dirname.c
+index e747fca..7ba5d55 100644
+--- a/lib/dirname.c
++++ b/lib/dirname.c
+@@ -20,8 +20,8 @@
+ 
+ #include "dirname.h"
+ 
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ #include "xalloc.h"
+ 
+ /* Just like mdir_name (dirname-lgpl.c), except, rather than
+diff --git a/lib/dirname.h b/lib/dirname.h
+index d4d03f6..e8f1170 100644
+--- a/lib/dirname.h
++++ b/lib/dirname.h
+@@ -25,7 +25,7 @@
+  #error "Please include config.h first."
+ #endif
+ 
+-# include <stdlib.h>
++# include "lib/stdlib.h"
+ # include "filename.h"
+ # include "basename-lgpl.h"
+ 
+diff --git a/lib/dup.c b/lib/dup.c
+index a2bfa26..1564117 100644
+--- a/lib/dup.c
++++ b/lib/dup.c
+@@ -18,7 +18,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <unistd.h>
++#include "lib/unistd.h"
+ 
+ #include <errno.h>
+ 
+@@ -52,8 +52,8 @@ dup_nothrow (int fd)
+ #  define dup_nothrow _dup
+ # endif
+ #elif defined __KLIBC__
+-# include <fcntl.h>
+-# include <sys/stat.h>
++# include "lib/fcntl.h"
++# include "lib/sys/stat.h"
+ 
+ # include <InnoTekLIBC/backend.h>
+ 
+diff --git a/lib/dup2.c b/lib/dup2.c
+index 69b3719..73cc22c 100644
+--- a/lib/dup2.c
++++ b/lib/dup2.c
+@@ -20,10 +20,10 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <unistd.h>
++#include "lib/unistd.h"
+ 
+ #include <errno.h>
+-#include <fcntl.h>
++#include "lib/fcntl.h"
+ 
+ #undef dup2
+ 
+diff --git a/lib/error.c b/lib/error.c
+index 9231c79..492837a 100644
+--- a/lib/error.c
++++ b/lib/error.c
+@@ -29,12 +29,12 @@
+         error_tail (status, err, fmt, args)
+ #endif
+ 
+-#include <error.h>
++#include "lib/error.h"
+ 
+ #include <stdarg.h>
+-#include <stdio.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdio.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ #if !_LIBC && ENABLE_NLS
+ # include "gettext.h"
+@@ -44,8 +44,8 @@
+ #ifdef _LIBC
+ # include <libintl.h>
+ # include <stdbool.h>
+-# include <stdint.h>
+-# include <wchar.h>
++# include "lib/stdint.h"
++# include "lib/wchar.h"
+ # define mbsrtowcs __mbsrtowcs
+ # define USE_UNLOCKED_IO 0
+ # define _GL_ATTRIBUTE_FORMAT_PRINTF_STANDARD(a, b)
+@@ -73,7 +73,7 @@ unsigned int error_message_count;
+ 
+ # define program_name program_invocation_name
+ # include <errno.h>
+-# include <limits.h>
++# include "lib/limits.h"
+ # include <libio/libioP.h>
+ 
+ /* In GNU libc we want do not want to use the common name 'error' directly.
+@@ -96,8 +96,8 @@ extern void __error_at_line (int status, int errnum, const char *file_name,
+ 
+ #else /* not _LIBC */
+ 
+-# include <fcntl.h>
+-# include <unistd.h>
++# include "lib/fcntl.h"
++# include "lib/unistd.h"
+ 
+ # if defined _WIN32 && ! defined __CYGWIN__
+ /* Get declarations of the native Windows API functions.  */
+diff --git a/lib/error.in.h b/lib/error.in.h
+index 24a619f..c25c7c7 100644
+--- a/lib/error.in.h
++++ b/lib/error.in.h
+@@ -40,7 +40,7 @@
+ #include <stdarg.h>
+ 
+ /* Get 'unreachable'.  */
+-#include <stddef.h>
++#include "lib/stddef.h"
+ 
+ /* Get _GL_ATTRIBUTE_SPEC_PRINTF_STANDARD, _GL_ATTRIBUTE_SPEC_PRINTF_SYSTEM.  */
+ #include <stdio.h>
+diff --git a/lib/exclude.c b/lib/exclude.c
+index 485beb6..7ee3b9f 100644
+--- a/lib/exclude.c
++++ b/lib/exclude.c
+@@ -23,14 +23,14 @@
+ 
+ #include <config.h>
+ 
+-#include <ctype.h>
++#include "lib/ctype.h"
+ #include <errno.h>
+-#include <regex.h>
+-#include <stddef.h>
+-#include <stdio.h>
+-#include <stdlib.h>
+-#include <string.h>
+-#include <uchar.h>
++#include "lib/regex.h"
++#include "lib/stddef.h"
++#include "lib/stdio.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
++#include "lib/uchar.h"
+ 
+ #include "exclude.h"
+ #include "filename.h"
+diff --git a/lib/exclude.h b/lib/exclude.h
+index 73f4ee6..a1e24b2 100644
+--- a/lib/exclude.h
++++ b/lib/exclude.h
+@@ -28,7 +28,7 @@
+  #error "Please include config.h first."
+ #endif
+ 
+-#include <stdio.h>
++#include "lib/stdio.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/exitfail.c b/lib/exitfail.c
+index 5b37c10..75ad448 100644
+--- a/lib/exitfail.c
++++ b/lib/exitfail.c
+@@ -19,6 +19,6 @@
+ 
+ #include "exitfail.h"
+ 
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ int volatile exit_failure = EXIT_FAILURE;
+diff --git a/lib/fchdir.c b/lib/fchdir.c
+index 73c1a84..4e18389 100644
+--- a/lib/fchdir.c
++++ b/lib/fchdir.c
+@@ -17,15 +17,15 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <unistd.h>
++#include "lib/unistd.h"
+ 
+-#include <dirent.h>
++#include "lib/dirent.h"
+ #include <errno.h>
+-#include <fcntl.h>
+-#include <stdlib.h>
+-#include <string.h>
+-#include <sys/types.h>
+-#include <sys/stat.h>
++#include "lib/fcntl.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
++#include "lib/sys/types.h"
++#include "lib/sys/stat.h"
+ 
+ #include "assure.h"
+ #include "filename.h"
+diff --git a/lib/fcntl.c b/lib/fcntl.c
+index 69cac9a..50560fb 100644
+--- a/lib/fcntl.c
++++ b/lib/fcntl.c
+@@ -20,13 +20,13 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <fcntl.h>
++#include "lib/fcntl.h"
+ 
+ #include <errno.h>
+-#include <limits.h>
++#include "lib/limits.h"
+ #include <stdarg.h>
+-#include <stdlib.h>
+-#include <unistd.h>
++#include "lib/stdlib.h"
++#include "lib/unistd.h"
+ 
+ #ifdef __KLIBC__
+ # define INCL_DOS
+diff --git a/lib/fd-hook.c b/lib/fd-hook.c
+index 4a5014e..77b5bf5 100644
+--- a/lib/fd-hook.c
++++ b/lib/fd-hook.c
+@@ -20,7 +20,7 @@
+ /* Specification.  */
+ #include "fd-hook.h"
+ 
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ /* Currently, this entire code is only needed for the handling of sockets
+    on native Windows platforms.  */
+diff --git a/lib/fdopendir.c b/lib/fdopendir.c
+index c6cad48..2493bdd 100644
+--- a/lib/fdopendir.c
++++ b/lib/fdopendir.c
+@@ -18,10 +18,10 @@
+ 
+ #include <config.h>
+ 
+-#include <dirent.h>
++#include "lib/dirent.h"
+ 
+-#include <stdlib.h>
+-#include <unistd.h>
++#include "lib/stdlib.h"
++#include "lib/unistd.h"
+ 
+ #if !HAVE_FDOPENDIR
+ 
+@@ -215,7 +215,7 @@ fd_clone_opendir (int fd, struct saved_cwd const *cwd)
+ #else /* HAVE_FDOPENDIR */
+ 
+ # include <errno.h>
+-# include <sys/stat.h>
++# include "lib/sys/stat.h"
+ 
+ # undef fdopendir
+ 
+diff --git a/lib/file-type.h b/lib/file-type.h
+index 4418eed..bab2c6f 100644
+--- a/lib/file-type.h
++++ b/lib/file-type.h
+@@ -26,8 +26,8 @@
+ # error "Please include config.h first."
+ #endif
+ 
+-#include <sys/types.h>
+-#include <sys/stat.h>
++#include "lib/sys/types.h"
++#include "lib/sys/stat.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/fileblocks.c b/lib/fileblocks.c
+index 8af2077..10e2b93 100644
+--- a/lib/fileblocks.c
++++ b/lib/fileblocks.c
+@@ -20,7 +20,7 @@
+ 
+ #include <config.h>
+ 
+-#include <sys/types.h>
++#include "lib/sys/types.h"
+ 
+ #if HAVE_SYS_PARAM_H
+ # include <sys/param.h>
+@@ -28,7 +28,7 @@
+ 
+ #if !HAVE_STRUCT_STAT_ST_BLOCKS && !defined _POSIX_SOURCE && defined BSIZE
+ 
+-# include <unistd.h>
++# include "lib/unistd.h"
+ 
+ # ifndef NINDIR
+ 
+diff --git a/lib/filename.h b/lib/filename.h
+index e353363..3ee9169 100644
+--- a/lib/filename.h
++++ b/lib/filename.h
+@@ -21,7 +21,7 @@
+ #ifndef _FILENAME_H
+ #define _FILENAME_H
+ 
+-#include <string.h>
++#include "lib/string.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/filenamecat-lgpl.c b/lib/filenamecat-lgpl.c
+index 10c3ea8..04268a9 100644
+--- a/lib/filenamecat-lgpl.c
++++ b/lib/filenamecat-lgpl.c
+@@ -22,8 +22,8 @@
+ /* Specification.  */
+ #include "filenamecat.h"
+ 
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ #include "basename-lgpl.h"
+ #include "filename.h"
+diff --git a/lib/filenamecat.c b/lib/filenamecat.c
+index ded6d17..1c9fc53 100644
+--- a/lib/filenamecat.c
++++ b/lib/filenamecat.c
+@@ -22,8 +22,8 @@
+ /* Specification.  */
+ #include "filenamecat.h"
+ 
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ #include "xalloc.h"
+ 
+diff --git a/lib/filenamecat.h b/lib/filenamecat.h
+index 54946a2..ea14b93 100644
+--- a/lib/filenamecat.h
++++ b/lib/filenamecat.h
+@@ -23,7 +23,7 @@
+  #error "Please include config.h first."
+ #endif
+ 
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/flexmember.h b/lib/flexmember.h
+index b4d86c2..000be65 100644
+--- a/lib/flexmember.h
++++ b/lib/flexmember.h
+@@ -25,7 +25,7 @@
+  #error "Please include config.h first."
+ #endif
+ 
+-#include <stddef.h>
++#include "lib/stddef.h"
+ 
+ /* Nonzero multiple of alignment of TYPE, suitable for FLEXSIZEOF below.
+    If _Alignof might not exist or might not work correctly on
+diff --git a/lib/fnmatch.c b/lib/fnmatch.c
+index 0270bfd..bd7c777 100644
+--- a/lib/fnmatch.c
++++ b/lib/fnmatch.c
+@@ -28,19 +28,19 @@
+ 
+ #include <assert.h>
+ #include <errno.h>
+-#include <ctype.h>
+-#include <string.h>
+-#include <stdckdint.h>
+-#include <stdlib.h>
++#include "lib/ctype.h"
++#include "lib/string.h"
++#include "lib/stdckdint.h"
++#include "lib/stdlib.h"
+ #if defined _LIBC || HAVE_ALLOCA
+-# include <alloca.h>
++# include "lib/alloca.h"
+ #endif
+-#include <stddef.h>
+-#include <uchar.h>
++#include "lib/stddef.h"
++#include "lib/uchar.h"
+ #if defined _LIBC || !_GL_SMALL_WCHAR_T
+ /* It's OK to use wchar_t, since it's wide enough.  */
+-# include <wchar.h>
+-# include <wctype.h>
++# include "lib/wchar.h"
++# include "lib/wctype.h"
+ # define WCHAR_T wchar_t
+ # define WINT_T wint_t
+ # define BTOWC btowc
+diff --git a/lib/fnmatch_loop.c b/lib/fnmatch_loop.c
+index e361be2..1ca7f39 100644
+--- a/lib/fnmatch_loop.c
++++ b/lib/fnmatch_loop.c
+@@ -16,7 +16,7 @@
+    <https://www.gnu.org/licenses/>.  */
+ 
+ #ifdef _LIBC
+-# include <stdint.h>
++# include "lib/stdint.h"
+ #endif
+ 
+ struct STRUCT
+diff --git a/lib/fopen.c b/lib/fopen.c
+index 41587d2..934323a 100644
+--- a/lib/fopen.c
++++ b/lib/fopen.c
+@@ -42,7 +42,7 @@ orig_fopen (const char *filename, const char *mode)
+ #endif
+ 
+ #include <errno.h>
+-#include <fcntl.h>
++#include "lib/fcntl.h"
+ #include <string.h>
+ #include <unistd.h>
+ #include <sys/types.h>
+diff --git a/lib/free.c b/lib/free.c
+index 98ceafd..6e0c766 100644
+--- a/lib/free.c
++++ b/lib/free.c
+@@ -20,7 +20,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ /* A function definition is only needed if HAVE_FREE_POSIX is not defined.  */
+ #if !HAVE_FREE_POSIX
+diff --git a/lib/freopen.c b/lib/freopen.c
+index b65b7cf..4d028a9 100644
+--- a/lib/freopen.c
++++ b/lib/freopen.c
+@@ -23,7 +23,7 @@
+ #include <config.h>
+ 
+ /* Get the original definition of freopen.  It might be defined as a macro.  */
+-#include <stdio.h>
++#include "lib/stdio.h"
+ #undef _GL_SKIP_GNULIB_STDIO_H
+ 
+ #include <errno.h>
+@@ -40,12 +40,12 @@ orig_freopen (const char *filename, const char *mode, FILE *stream)
+    this include because of the preliminary #include <stdio.h> above.  */
+ # include "stdio.h"
+ #else
+-# include <stdio.h>
++# include "lib/stdio.h"
+ #endif
+ 
+-#include <fcntl.h>
+-#include <string.h>
+-#include <unistd.h>
++#include "lib/fcntl.h"
++#include "lib/string.h"
++#include "lib/unistd.h"
+ 
+ FILE *
+ rpl_freopen (const char *filename, const char *mode, FILE *stream)
+diff --git a/lib/fstat.c b/lib/fstat.c
+index 200e672..62c7c9b 100644
+--- a/lib/fstat.c
++++ b/lib/fstat.c
+@@ -21,8 +21,8 @@
+ #include <config.h>
+ 
+ /* Get the original definition of fstat.  It might be defined as a macro.  */
+-#include <sys/types.h>
+-#include <sys/stat.h>
++#include "lib/sys/types.h"
++#include "lib/sys/stat.h"
+ #undef __need_system_sys_stat_h
+ 
+ #if defined _WIN32 && ! defined __CYGWIN__
+@@ -46,13 +46,13 @@ orig_fstat (int fd, struct stat *buf)
+    above.  */
+ # include "sys/stat.h"
+ #else
+-# include <sys/stat.h>
++# include "lib/sys/stat.h"
+ #endif
+ 
+ #include "stat-time.h"
+ 
+ #include <errno.h>
+-#include <unistd.h>
++#include "lib/unistd.h"
+ #ifdef WINDOWS_NATIVE
+ # define WIN32_LEAN_AND_MEAN
+ # include <windows.h>
+diff --git a/lib/fstatat.c b/lib/fstatat.c
+index 36dd5e9..19cf5bf 100644
+--- a/lib/fstatat.c
++++ b/lib/fstatat.c
+@@ -24,8 +24,8 @@
+ #include <config.h>
+ 
+ /* Get the original definition of fstatat.  It might be defined as a macro.  */
+-#include <sys/types.h>
+-#include <sys/stat.h>
++#include "lib/sys/types.h"
++#include "lib/sys/stat.h"
+ #undef __need_system_sys_stat_h
+ 
+ #if HAVE_FSTATAT && HAVE_WORKING_FSTATAT_ZERO_FLAG
+@@ -42,15 +42,15 @@ orig_fstatat (int fd, char const *filename, struct stat *buf, int flags)
+    above.  */
+ # include "sys/stat.h"
+ #else
+-# include <sys/stat.h>
++# include "lib/sys/stat.h"
+ #endif
+ 
+ #include "stat-time.h"
+ 
+ #include <errno.h>
+-#include <fcntl.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/fcntl.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ #if HAVE_FSTATAT && HAVE_WORKING_FSTATAT_ZERO_FLAG
+ 
+diff --git a/lib/getcwd-lgpl.c b/lib/getcwd-lgpl.c
+index 155cf33..f4fa1c3 100644
+--- a/lib/getcwd-lgpl.c
++++ b/lib/getcwd-lgpl.c
+@@ -17,11 +17,11 @@
+ #include <config.h>
+ 
+ /* Specification */
+-#include <unistd.h>
++#include "lib/unistd.h"
+ 
+ #include <errno.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ #if GNULIB_GETCWD
+ /* Favor GPL getcwd.c if both getcwd and getcwd-lgpl modules are in use.  */
+diff --git a/lib/getdtablesize.c b/lib/getdtablesize.c
+index b98fbb7..c256fca 100644
+--- a/lib/getdtablesize.c
++++ b/lib/getdtablesize.c
+@@ -18,11 +18,11 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <unistd.h>
++#include "lib/unistd.h"
+ 
+ #if defined _WIN32 && ! defined __CYGWIN__
+ 
+-# include <stdio.h>
++# include "lib/stdio.h"
+ 
+ # if HAVE_MSVC_INVALID_PARAMETER_HANDLER
+ #  include "msvc-inval.h"
+@@ -89,7 +89,7 @@ getdtablesize (void)
+ 
+ #else
+ 
+-# include <limits.h>
++# include "lib/limits.h"
+ # include <sys/resource.h>
+ 
+ # ifndef RLIM_SAVED_CUR
+diff --git a/lib/getlocalename_l-unsafe.c b/lib/getlocalename_l-unsafe.c
+index 6a72c81..74c1768 100644
+--- a/lib/getlocalename_l-unsafe.c
++++ b/lib/getlocalename_l-unsafe.c
+@@ -19,11 +19,11 @@
+ /* Specification.  */
+ #include "getlocalename_l-unsafe.h"
+ 
+-#include <locale.h>
+-#include <limits.h>
+-#include <stddef.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/locale.h"
++#include "lib/limits.h"
++#include "lib/stddef.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ #if LC_MESSAGES == 1729 || defined __ANDROID__
+ # include "setlocale-fixes.h"
+@@ -31,7 +31,7 @@
+ #include "setlocale_null.h"
+ 
+ #if (__GLIBC__ >= 2 && !defined __UCLIBC__) || (defined __linux__ && HAVE_LANGINFO_H) || defined __CYGWIN__
+-# include <langinfo.h>
++# include "lib/langinfo.h"
+ #endif
+ #if defined __sun
+ # if HAVE_SOLARIS114_LOCALES
+diff --git a/lib/getlocalename_l-unsafe.h b/lib/getlocalename_l-unsafe.h
+index d56b113..ac13e08 100644
+--- a/lib/getlocalename_l-unsafe.h
++++ b/lib/getlocalename_l-unsafe.h
+@@ -19,7 +19,7 @@
+ #ifndef _GETLOCALENAME_L_UNSAFE_H
+ #define _GETLOCALENAME_L_UNSAFE_H
+ 
+-#include <locale.h>
++#include "lib/locale.h"
+ 
+ #include "arg-nonnull.h"
+ 
+diff --git a/lib/getopt-pfx-core.h b/lib/getopt-pfx-core.h
+index 7c5ea09..9f0a5d8 100644
+--- a/lib/getopt-pfx-core.h
++++ b/lib/getopt-pfx-core.h
+@@ -35,10 +35,10 @@
+ /* Include platform-dependent header files that may declare getopt() and
+    friends.  */
+ # if defined _AIX || defined __hpux || defined __sun || defined __QNX__
+-#  include <stdio.h>
++#  include "lib/stdio.h"
+ # endif
+ # if defined MUSL_LIBC || (defined __FreeBSD__ || defined __DragonFly__) || defined __NetBSD__ || defined __OpenBSD__ || (defined __APPLE__ && defined __MACH__) || defined _AIX || defined __sun || defined __minix || defined __HAIKU__
+-#  include <unistd.h>
++#  include "lib/unistd.h"
+ # endif
+ 
+ # ifndef __GETOPT_ID
+diff --git a/lib/getopt.c b/lib/getopt.c
+index 6b155e6..e9f37aa 100644
+--- a/lib/getopt.c
++++ b/lib/getopt.c
+@@ -23,10 +23,10 @@
+ 
+ #include <getopt.h>
+ 
+-#include <stdio.h>
+-#include <stdlib.h>
+-#include <string.h>
+-#include <unistd.h>
++#include "lib/stdio.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
++#include "lib/unistd.h"
+ 
+ #ifdef _LIBC
+ /* When used as part of glibc, error printing must be done differently
+diff --git a/lib/getopt1.c b/lib/getopt1.c
+index c856684..7ff2b93 100644
+--- a/lib/getopt1.c
++++ b/lib/getopt1.c
+@@ -67,8 +67,8 @@ _getopt_long_only_r (int argc, char **argv, const char *options,
+ 
+ #ifdef TEST
+ 
+-#include <stdio.h>
+-#include <stdlib.h>
++#include "lib/stdio.h"
++#include "lib/stdlib.h"
+ 
+ int
+ main (int argc, char **argv)
+diff --git a/lib/getpagesize.c b/lib/getpagesize.c
+index c4434ef..08f364e 100644
+--- a/lib/getpagesize.c
++++ b/lib/getpagesize.c
+@@ -21,7 +21,7 @@
+ 
+ /* Specification. */
+ #define _GL_GETPAGESIZE_INLINE _GL_EXTERN_INLINE
+-#include <unistd.h>
++#include "lib/unistd.h"
+ 
+ /* This implementation is only for native Windows systems.  */
+ #if defined _WIN32 && ! defined __CYGWIN__
+diff --git a/lib/getprogname.c b/lib/getprogname.c
+index 4fe7c90..5cfd4ed 100644
+--- a/lib/getprogname.c
++++ b/lib/getprogname.c
+@@ -17,42 +17,42 @@
+ #include <config.h>
+ 
+ /* Specification.  Also get __argv declaration.  */
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #include <errno.h> /* get program_invocation_name declaration */
+ 
+ #ifdef _AIX
+-# include <unistd.h>
++# include "lib/unistd.h"
+ # include <procinfo.h>
+-# include <string.h>
++# include "lib/string.h"
+ #endif
+ 
+ #ifdef __MVS__
+ # ifndef _OPEN_SYS
+ #  define _OPEN_SYS
+ # endif
+-# include <string.h>
++# include "lib/string.h"
+ # include <sys/ps.h>
+ #endif
+ 
+ #ifdef __hpux
+-# include <unistd.h>
++# include "lib/unistd.h"
+ # include <sys/param.h>
+ # include <sys/pstat.h>
+-# include <string.h>
++# include "lib/string.h"
+ #endif
+ 
+ #if defined __sgi || defined __osf__
+-# include <string.h>
+-# include <unistd.h>
+-# include <stdio.h>
+-# include <fcntl.h>
++# include "lib/string.h"
++# include "lib/unistd.h"
++# include "lib/stdio.h"
++# include "lib/fcntl.h"
+ # include <sys/procfs.h>
+ #endif
+ 
+ #if defined __SCO_VERSION__ || defined __sysv5__
+-# include <fcntl.h>
+-# include <string.h>
++# include "lib/fcntl.h"
++# include "lib/string.h"
+ #endif
+ 
+ #include "basename-lgpl.h"
+diff --git a/lib/getprogname.h b/lib/getprogname.h
+index ee9bb28..b52c5ec 100644
+--- a/lib/getprogname.h
++++ b/lib/getprogname.h
+@@ -17,7 +17,7 @@
+ #ifndef _GL_GETPROGNAME_H
+ #define _GL_GETPROGNAME_H
+ 
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #if __GNUC__ || (__clang_major__ >= 4)
+ # warning "The include file getprogname.h is deprecated. Use <stdlib.h> instead."
+diff --git a/lib/getrandom.c b/lib/getrandom.c
+index cd2b42d..8d0ae50 100644
+--- a/lib/getrandom.c
++++ b/lib/getrandom.c
+@@ -19,11 +19,11 @@
+ 
+ #include <config.h>
+ 
+-#include <sys/random.h>
++#include "lib/sys/random.h"
+ 
+ #include <errno.h>
+-#include <fcntl.h>
+-#include <unistd.h>
++#include "lib/fcntl.h"
++#include "lib/unistd.h"
+ 
+ #if defined _WIN32 && ! defined __CYGWIN__
+ # define WIN32_LEAN_AND_MEAN
+diff --git a/lib/gettext.h b/lib/gettext.h
+index ea0c27e..590fc86 100644
+--- a/lib/gettext.h
++++ b/lib/gettext.h
+@@ -46,7 +46,7 @@
+    and also including <libintl.h> would fail on SunOS 4, whereas <locale.h>
+    is OK.  */
+ # if defined(__sun)
+-#  include <locale.h>
++#  include "lib/locale.h"
+ # endif
+ 
+ /* Many header files from the libstdc++ coming with g++ 3.3 or newer include
+@@ -119,7 +119,7 @@
+    short and rarely need to change.
+    The letter 'p' stands for 'particular' or 'special'.  */
+ 
+-#include <locale.h> /* for LC_MESSAGES */
++#include "lib/locale.h" /* for LC_MESSAGES */
+ 
+ #ifdef DEFAULT_TEXT_DOMAIN
+ # define pgettext(Msgctxt, Msgid) \
+@@ -189,7 +189,7 @@ npgettext_aux (const char *domain,
+    can be arbitrary expressions.  But for string literals these macros are
+    less efficient than those above.  */
+ 
+-#include <string.h> /* for memcpy */
++#include "lib/string.h" /* for memcpy */
+ 
+ /* GNULIB_NO_VLA can be defined to disable use of VLAs even if supported.
+    This relates to the -Wvla and -Wvla-larger-than warnings, enabled in
+@@ -206,7 +206,7 @@ npgettext_aux (const char *domain,
+ #endif
+ 
+ #if !_LIBGETTEXT_HAVE_VARIABLE_SIZE_ARRAYS
+-# include <stdlib.h> /* for malloc, free */
++# include "lib/stdlib.h" /* for malloc, free */
+ #endif
+ 
+ #define pgettext_expr(Msgctxt, Msgid) \
+diff --git a/lib/gettime.c b/lib/gettime.c
+index b124614..60a731a 100644
+--- a/lib/gettime.c
++++ b/lib/gettime.c
+@@ -21,7 +21,7 @@
+ 
+ #include "timespec.h"
+ 
+-#include <sys/time.h>
++#include "lib/sys/time.h"
+ 
+ /* Get the system time into *TS.  */
+ 
+diff --git a/lib/gettimeofday.c b/lib/gettimeofday.c
+index 304e23b..8700994 100644
+--- a/lib/gettimeofday.c
++++ b/lib/gettimeofday.c
+@@ -20,9 +20,9 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <sys/time.h>
++#include "lib/sys/time.h"
+ 
+-#include <time.h>
++#include "lib/time.h"
+ 
+ #if defined _WIN32 && ! defined __CYGWIN__
+ # define WINDOWS_NATIVE
+diff --git a/lib/glthread/lock.h b/lib/glthread/lock.h
+index d6ccc20..8990cb2 100644
+--- a/lib/glthread/lock.h
++++ b/lib/glthread/lock.h
+@@ -79,7 +79,7 @@
+ #endif
+ 
+ #include <errno.h>
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #include "glthread/once.h"
+ 
+@@ -192,7 +192,7 @@ extern int glthread_recursive_lock_destroy (gl_recursive_lock_t *lock);
+ 
+ /* Use the POSIX threads library.  */
+ 
+-# include <pthread.h>
++# include "lib/pthread.h"
+ 
+ # ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/glthread/once.h b/lib/glthread/once.h
+index 943bd7a..c43f9f5 100644
+--- a/lib/glthread/once.h
++++ b/lib/glthread/once.h
+@@ -40,7 +40,7 @@
+ #endif
+ 
+ #include <errno.h>
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #if !defined c11_threads_in_use
+ # if HAVE_THREADS_H && USE_POSIX_THREADS_FROM_LIBC
+@@ -86,7 +86,7 @@ typedef once_flag gl_once_t;
+ 
+ /* Use the POSIX threads library.  */
+ 
+-# include <pthread.h>
++# include "lib/pthread.h"
+ 
+ # ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/glthread/threadlib.c b/lib/glthread/threadlib.c
+index a6f7688..8b1f27e 100644
+--- a/lib/glthread/threadlib.c
++++ b/lib/glthread/threadlib.c
+@@ -25,8 +25,8 @@
+ /* Use the POSIX threads library.  */
+ 
+ # include <errno.h>
+-# include <pthread.h>
+-# include <stdlib.h>
++# include "lib/pthread.h"
++# include "lib/stdlib.h"
+ 
+ # if PTHREAD_IN_USE_DETECTION_HARD
+ 
+diff --git a/lib/hard-locale.c b/lib/hard-locale.c
+index 767906d..b01abfc 100644
+--- a/lib/hard-locale.c
++++ b/lib/hard-locale.c
+@@ -20,9 +20,9 @@
+ 
+ #include "hard-locale.h"
+ 
+-#include <locale.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/locale.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ bool
+ hard_locale (int category)
+diff --git a/lib/hash.c b/lib/hash.c
+index e06a235..78c2533 100644
+--- a/lib/hash.c
++++ b/lib/hash.c
+@@ -30,9 +30,9 @@
+ #include "xalloc-oversized.h"
+ 
+ #include <errno.h>
+-#include <stdint.h>
+-#include <stdio.h>
+-#include <stdlib.h>
++#include "lib/stdint.h"
++#include "lib/stdio.h"
++#include "lib/stdlib.h"
+ 
+ #if USE_OBSTACK
+ # include "obstack.h"
+diff --git a/lib/hash.h b/lib/hash.h
+index 397b421..f34e083 100644
+--- a/lib/hash.h
++++ b/lib/hash.h
+@@ -31,7 +31,7 @@
+  #error "Please include config.h first."
+ #endif
+ 
+-# include <stdio.h>
++# include "lib/stdio.h"
+ 
+ # ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/ialloc.h b/lib/ialloc.h
+index 8bf5dd1..6b363f1 100644
+--- a/lib/ialloc.h
++++ b/lib/ialloc.h
+@@ -27,8 +27,8 @@
+ #include "idx.h"
+ 
+ #include <errno.h>
+-#include <stdint.h>
+-#include <stdlib.h>
++#include "lib/stdint.h"
++#include "lib/stdlib.h"
+ 
+ _GL_INLINE_HEADER_BEGIN
+ #ifndef IALLOC_INLINE
+diff --git a/lib/idx.h b/lib/idx.h
+index 639b6cf..60bdc26 100644
+--- a/lib/idx.h
++++ b/lib/idx.h
+@@ -20,10 +20,10 @@
+ #define _IDX_H
+ 
+ /* Get ptrdiff_t.  */
+-#include <stddef.h>
++#include "lib/stddef.h"
+ 
+ /* Get PTRDIFF_MAX.  */
+-#include <stdint.h>
++#include "lib/stdint.h"
+ 
+ /* The type 'idx_t' holds an (array) index or an (object) size.
+    Its implementation promotes to a signed integer type,
+diff --git a/lib/intprops-internal.h b/lib/intprops-internal.h
+index 62de3c8..e86f05b 100644
+--- a/lib/intprops-internal.h
++++ b/lib/intprops-internal.h
+@@ -18,7 +18,7 @@
+ #ifndef _GL_INTPROPS_INTERNAL_H
+ #define _GL_INTPROPS_INTERNAL_H
+ 
+-#include <limits.h>
++#include "lib/limits.h"
+ 
+ /* Pacify GCC 13.2 in some calls to _GL_EXPR_SIGNED.  */
+ #if 4 < __GNUC__ + (3 <= __GNUC_MINOR__) && !defined __clang__
+@@ -142,7 +142,7 @@
+ 
+ #if (!defined _GL_STDCKDINT_H && 202311 <= __STDC_VERSION__ \
+      && ! (_GL_HAS_BUILTIN_ADD_OVERFLOW && _GL_HAS_BUILTIN_MUL_OVERFLOW))
+-# include <stdckdint.h>
++# include "lib/stdckdint.h"
+ #endif
+ 
+ /* Store the low-order bits of A + B, A - B, A * B, respectively, into *R.
+diff --git a/lib/isblank.c b/lib/isblank.c
+index a80a668..ed49156 100644
+--- a/lib/isblank.c
++++ b/lib/isblank.c
+@@ -18,7 +18,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <ctype.h>
++#include "lib/ctype.h"
+ 
+ int
+ isblank (int c)
+diff --git a/lib/iswblank.c b/lib/iswblank.c
+index 6e361f4..0bf1365 100644
+--- a/lib/iswblank.c
++++ b/lib/iswblank.c
+@@ -17,7 +17,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <wctype.h>
++#include "lib/wctype.h"
+ 
+ int
+ iswblank (wint_t wc)
+diff --git a/lib/iswctype.c b/lib/iswctype.c
+index 576e93e..8c87ff2 100644
+--- a/lib/iswctype.c
++++ b/lib/iswctype.c
+@@ -18,7 +18,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <wctype.h>
++#include "lib/wctype.h"
+ 
+ #if GNULIB_defined_wint_t && !GNULIB_defined_wctype_t
+ 
+diff --git a/lib/iswdigit.c b/lib/iswdigit.c
+index 6bba487..49e7792 100644
+--- a/lib/iswdigit.c
++++ b/lib/iswdigit.c
+@@ -17,7 +17,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <wctype.h>
++#include "lib/wctype.h"
+ 
+ int
+ iswdigit (wint_t wc)
+diff --git a/lib/iswpunct.c b/lib/iswpunct.c
+index 2b9258a..4d42153 100644
+--- a/lib/iswpunct.c
++++ b/lib/iswpunct.c
+@@ -17,9 +17,9 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <wctype.h>
++#include "lib/wctype.h"
+ 
+-#include <ctype.h>
++#include "lib/ctype.h"
+ 
+ int
+ iswpunct (wint_t wc)
+diff --git a/lib/iswxdigit.c b/lib/iswxdigit.c
+index e154ac8..29f4bf2 100644
+--- a/lib/iswxdigit.c
++++ b/lib/iswxdigit.c
+@@ -17,7 +17,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <wctype.h>
++#include "lib/wctype.h"
+ 
+ int
+ iswxdigit (wint_t wc)
+diff --git a/lib/lc-charset-dispatch.h b/lib/lc-charset-dispatch.h
+index 554137b..ee550ed 100644
+--- a/lib/lc-charset-dispatch.h
++++ b/lib/lc-charset-dispatch.h
+@@ -16,7 +16,7 @@
+ 
+ /* Written by Bruno Haible <bruno@clisp.org>, 2018.  */
+ 
+-#include <wchar.h>
++#include "lib/wchar.h"
+ 
+ #if GNULIB_defined_mbstate_t
+ 
+diff --git a/lib/localcharset.c b/lib/localcharset.c
+index 32f6f78..30521dd 100644
+--- a/lib/localcharset.c
++++ b/lib/localcharset.c
+@@ -22,10 +22,10 @@
+ /* Specification.  */
+ #include "localcharset.h"
+ 
+-#include <stddef.h>
+-#include <stdio.h>
+-#include <string.h>
+-#include <stdlib.h>
++#include "lib/stddef.h"
++#include "lib/stdio.h"
++#include "lib/string.h"
++#include "lib/stdlib.h"
+ 
+ #if defined __APPLE__ && defined __MACH__ && HAVE_LANGINFO_CODESET
+ # define DARWIN7 /* Darwin 7 or newer, i.e. Mac OS X 10.3 or newer */
+@@ -33,7 +33,7 @@
+ 
+ #if defined _WIN32 && !defined __CYGWIN__
+ # define WINDOWS_NATIVE
+-# include <locale.h>
++# include "lib/locale.h"
+ #endif
+ 
+ #if defined __EMX__
+@@ -45,10 +45,10 @@
+ 
+ #if !defined WINDOWS_NATIVE
+ # if HAVE_LANGINFO_CODESET
+-#  include <langinfo.h>
++#  include "lib/langinfo.h"
+ # else
+ #  if 0 /* see comment regarding use of setlocale(), below */
+-#   include <locale.h>
++#   include "lib/locale.h"
+ #  endif
+ # endif
+ # ifdef __CYGWIN__
+diff --git a/lib/localeconv.c b/lib/localeconv.c
+index a6bbdce..ad98e76 100644
+--- a/lib/localeconv.c
++++ b/lib/localeconv.c
+@@ -17,9 +17,9 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <locale.h>
++#include "lib/locale.h"
+ 
+-#include <limits.h>
++#include "lib/limits.h"
+ 
+ #if HAVE_STRUCT_LCONV_DECIMAL_POINT
+ 
+diff --git a/lib/localename-unsafe.c b/lib/localename-unsafe.c
+index a058281..3ab9b34 100644
+--- a/lib/localename-unsafe.c
++++ b/lib/localename-unsafe.c
+@@ -29,10 +29,10 @@
+ /* Specification.  */
+ #include "localename.h"
+ 
+-#include <stddef.h>
+-#include <stdlib.h>
+-#include <locale.h>
+-#include <string.h>
++#include "lib/stddef.h"
++#include "lib/stdlib.h"
++#include "lib/locale.h"
++#include "lib/string.h"
+ 
+ #include "getlocalename_l-unsafe.h"
+ #include "setlocale_null.h"
+diff --git a/lib/lstat.c b/lib/lstat.c
+index bb4a59f..38bf11f 100644
+--- a/lib/lstat.c
++++ b/lib/lstat.c
+@@ -31,8 +31,8 @@ typedef int dummy;
+ #else /* HAVE_LSTAT */
+ 
+ /* Get the original definition of lstat.  It might be defined as a macro.  */
+-# include <sys/types.h>
+-# include <sys/stat.h>
++# include "lib/sys/types.h"
++# include "lib/sys/stat.h"
+ # undef __need_system_sys_stat_h
+ 
+ static int
+@@ -48,12 +48,12 @@ orig_lstat (const char *filename, struct stat *buf)
+    above.  */
+ #  include "sys/stat.h"
+ # else
+-#  include <sys/stat.h>
++#  include "lib/sys/stat.h"
+ # endif
+ 
+ # include "stat-time.h"
+ 
+-# include <string.h>
++# include "lib/string.h"
+ # include <errno.h>
+ 
+ /* lstat works differently on Linux and Solaris systems.  POSIX (see
+diff --git a/lib/malloc.c b/lib/malloc.c
+index 5642c83..3bea428 100644
+--- a/lib/malloc.c
++++ b/lib/malloc.c
+@@ -21,10 +21,10 @@
+ #define _GL_USE_STDLIB_ALLOC 1
+ #include <config.h>
+ 
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #include <errno.h>
+-#include <stdckdint.h>
++#include "lib/stdckdint.h"
+ 
+ /* Allocate an N-byte block of memory from the heap, even if N is 0.  */
+ 
+diff --git a/lib/malloc/dynarray-skeleton.c b/lib/malloc/dynarray-skeleton.c
+index 6b0585c..43bf438 100644
+--- a/lib/malloc/dynarray-skeleton.c
++++ b/lib/malloc/dynarray-skeleton.c
+@@ -88,8 +88,8 @@
+ #include <malloc/dynarray.h>
+ 
+ #include <errno.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ #ifndef DYNARRAY_STRUCT
+ # error "DYNARRAY_STRUCT must be defined"
+diff --git a/lib/malloc/dynarray.h b/lib/malloc/dynarray.h
+index 6cbbe50..726171d 100644
+--- a/lib/malloc/dynarray.h
++++ b/lib/malloc/dynarray.h
+@@ -94,8 +94,8 @@
+ #ifndef _DYNARRAY_H
+ #define _DYNARRAY_H
+ 
+-#include <stddef.h>
+-#include <string.h>
++#include "lib/stddef.h"
++#include "lib/string.h"
+ 
+ struct dynarray_header
+ {
+diff --git a/lib/malloc/dynarray_at_failure.c b/lib/malloc/dynarray_at_failure.c
+index b94ac3d..a55172c 100644
+--- a/lib/malloc/dynarray_at_failure.c
++++ b/lib/malloc/dynarray_at_failure.c
+@@ -18,11 +18,11 @@
+ 
+ #ifndef _LIBC
+ # include <libc-config.h>
+-# include <stdlib.h>
++# include "lib/stdlib.h"
+ #endif
+ 
+ #include <dynarray.h>
+-#include <stdio.h>
++#include "lib/stdio.h"
+ 
+ void
+ __libc_dynarray_at_failure (size_t size, size_t index)
+diff --git a/lib/malloc/dynarray_emplace_enlarge.c b/lib/malloc/dynarray_emplace_enlarge.c
+index 5312686..b9d0765 100644
+--- a/lib/malloc/dynarray_emplace_enlarge.c
++++ b/lib/malloc/dynarray_emplace_enlarge.c
+@@ -22,9 +22,9 @@
+ 
+ #include <dynarray.h>
+ #include <errno.h>
+-#include <stdckdint.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdckdint.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ bool
+ __libc_dynarray_emplace_enlarge (struct dynarray_header *list,
+diff --git a/lib/malloc/dynarray_finalize.c b/lib/malloc/dynarray_finalize.c
+index 3178c68..bb3d6c5 100644
+--- a/lib/malloc/dynarray_finalize.c
++++ b/lib/malloc/dynarray_finalize.c
+@@ -21,8 +21,8 @@
+ #endif
+ 
+ #include <dynarray.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ bool
+ __libc_dynarray_finalize (struct dynarray_header *list,
+diff --git a/lib/malloc/dynarray_resize.c b/lib/malloc/dynarray_resize.c
+index 3cd1626..ef350e1 100644
+--- a/lib/malloc/dynarray_resize.c
++++ b/lib/malloc/dynarray_resize.c
+@@ -22,9 +22,9 @@
+ 
+ #include <dynarray.h>
+ #include <errno.h>
+-#include <stdckdint.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdckdint.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ bool
+ __libc_dynarray_resize (struct dynarray_header *list, size_t size,
+diff --git a/lib/malloc/dynarray_resize_clear.c b/lib/malloc/dynarray_resize_clear.c
+index 7bfc000..d9d4765 100644
+--- a/lib/malloc/dynarray_resize_clear.c
++++ b/lib/malloc/dynarray_resize_clear.c
+@@ -21,7 +21,7 @@
+ #endif
+ 
+ #include <dynarray.h>
+-#include <string.h>
++#include "lib/string.h"
+ 
+ bool
+ __libc_dynarray_resize_clear (struct dynarray_header *list, size_t size,
+diff --git a/lib/malloca.c b/lib/malloca.c
+index 4bce9a3..21ef83e 100644
+--- a/lib/malloca.c
++++ b/lib/malloca.c
+@@ -21,7 +21,7 @@
+ /* Specification.  */
+ #include "malloca.h"
+ 
+-#include <stdckdint.h>
++#include "lib/stdckdint.h"
+ #if defined __CHERI_PURE_CAPABILITY__
+ # include <cheri.h>
+ #endif
+diff --git a/lib/malloca.h b/lib/malloca.h
+index f131fd5..5aade11 100644
+--- a/lib/malloca.h
++++ b/lib/malloca.h
+@@ -24,10 +24,10 @@
+  #error "Please include config.h first."
+ #endif
+ 
+-#include <alloca.h>
+-#include <stddef.h>
+-#include <stdlib.h>
+-#include <stdint.h>
++#include "lib/alloca.h"
++#include "lib/stddef.h"
++#include "lib/stdlib.h"
++#include "lib/stdint.h"
+ #if defined __CHERI_PURE_CAPABILITY__
+ # include <cheri.h>
+ #endif
+diff --git a/lib/mbrtoc32.c b/lib/mbrtoc32.c
+index c462552..ac329cd 100644
+--- a/lib/mbrtoc32.c
++++ b/lib/mbrtoc32.c
+@@ -19,12 +19,12 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+ #include "attribute.h"
+ 
+ #include <errno.h>
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #if GL_CHAR32_T_IS_UNICODE
+ # include "lc-charset-unicode.h"
+@@ -52,7 +52,7 @@
+ 
+ # elif HAVE_PTHREAD_API
+ 
+-#  include <pthread.h>
++#  include "lib/pthread.h"
+ #  if HAVE_THREADS_H && HAVE_WEAK_SYMBOLS
+ #   include <threads.h>
+ #   pragma weak thrd_exit
+@@ -84,14 +84,14 @@ mbrtoc32 (char32_t *pwc, const char *s, size_t n, mbstate_t *ps)
+ 
+ /* Implement mbrtoc32() based on the original mbrtoc32() or on mbrtowc().  */
+ 
+-# include <wchar.h>
++# include "lib/wchar.h"
+ 
+ # include "localcharset.h"
+ # include "streq.h"
+ 
+ # if MBRTOC32_IN_C_LOCALE_MAYBE_EILSEQ
+ #  include "hard-locale.h"
+-#  include <locale.h>
++#  include "lib/locale.h"
+ # endif
+ 
+ static mbstate_t internal_state;
+diff --git a/lib/mbrtowc.c b/lib/mbrtowc.c
+index 6f0aa12..dbf9a32 100644
+--- a/lib/mbrtowc.c
++++ b/lib/mbrtowc.c
+@@ -18,15 +18,15 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <wchar.h>
++#include "lib/wchar.h"
+ 
+ #if GNULIB_defined_mbstate_t
+ /* Implement mbrtowc() on top of mbtowc() for the non-UTF-8 locales
+    and directly for the UTF-8 locales.  */
+ 
+ # include <errno.h>
+-# include <stdint.h>
+-# include <stdlib.h>
++# include "lib/stdint.h"
++# include "lib/stdlib.h"
+ 
+ # if AVOID_ANY_THREADS
+ 
+@@ -39,7 +39,7 @@
+ 
+ # elif HAVE_PTHREAD_API
+ 
+-#  include <pthread.h>
++#  include "lib/pthread.h"
+ #  if HAVE_THREADS_H && HAVE_WEAK_SYMBOLS
+ #   include <threads.h>
+ #   pragma weak thrd_exit
+@@ -73,7 +73,7 @@ mbrtowc (wchar_t *pwc, const char *s, size_t n, mbstate_t *ps)
+ 
+ # if MBRTOWC_IN_C_LOCALE_MAYBE_EILSEQ
+ #  include "hard-locale.h"
+-#  include <locale.h>
++#  include "lib/locale.h"
+ # endif
+ 
+ # undef mbrtowc
+diff --git a/lib/mbscasecmp.c b/lib/mbscasecmp.c
+index 99c544b..0d76cca 100644
+--- a/lib/mbscasecmp.c
++++ b/lib/mbscasecmp.c
+@@ -19,12 +19,12 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <string.h>
++#include "lib/string.h"
+ 
+-#include <ctype.h>
+-#include <limits.h>
+-#include <stdlib.h>
+-#include <uchar.h>
++#include "lib/ctype.h"
++#include "lib/limits.h"
++#include "lib/stdlib.h"
++#include "lib/uchar.h"
+ 
+ #if GNULIB_MCEL_PREFER
+ # include "mcel.h"
+diff --git a/lib/mbsinit.c b/lib/mbsinit.c
+index 2df30b3..66afc70 100644
+--- a/lib/mbsinit.c
++++ b/lib/mbsinit.c
+@@ -18,7 +18,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <wchar.h>
++#include "lib/wchar.h"
+ 
+ 
+ #if GNULIB_defined_mbstate_t
+diff --git a/lib/mbsrtoc32s.c b/lib/mbsrtoc32s.c
+index 7f63758..c7cc790 100644
+--- a/lib/mbsrtoc32s.c
++++ b/lib/mbsrtoc32s.c
+@@ -19,17 +19,17 @@
+ 
+ #define IN_MBSRTOC32S
+ /* Specification.  */
+-#include <uchar.h>
++#include "lib/uchar.h"
+ 
+-#include <wchar.h>
++#include "lib/wchar.h"
+ 
+ #if (HAVE_WORKING_MBRTOC32 && HAVE_WORKING_C32RTOMB && !_GL_WCHAR_T_IS_UCS4) || (GL_CHAR32_T_IS_UNICODE && GL_CHAR32_T_VS_WCHAR_T_NEEDS_CONVERSION) || _GL_SMALL_WCHAR_T
+ /* The char32_t encoding of a multibyte character may be different than its
+    wchar_t encoding, or char32_t is wider than wchar_t.  */
+ 
+ # include <errno.h>
+-# include <limits.h>
+-# include <stdlib.h>
++# include "lib/limits.h"
++# include "lib/stdlib.h"
+ 
+ # include "strnlen1.h"
+ 
+diff --git a/lib/mbsrtowcs.c b/lib/mbsrtowcs.c
+index e693411..fb1e93a 100644
+--- a/lib/mbsrtowcs.c
++++ b/lib/mbsrtowcs.c
+@@ -18,11 +18,11 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <wchar.h>
++#include "lib/wchar.h"
+ 
+ #include <errno.h>
+-#include <limits.h>
+-#include <stdlib.h>
++#include "lib/limits.h"
++#include "lib/stdlib.h"
+ 
+ #include "strnlen1.h"
+ 
+diff --git a/lib/mbszero.c b/lib/mbszero.c
+index 36fc920..7768417 100644
+--- a/lib/mbszero.c
++++ b/lib/mbszero.c
+@@ -20,4 +20,4 @@
+ 
+ #define IN_MBSZERO
+ /* Specification and implementation.  */
+-#include <wchar.h>
++#include "lib/wchar.h"
+diff --git a/lib/mbtowc-lock.c b/lib/mbtowc-lock.c
+index e350608..a532175 100644
+--- a/lib/mbtowc-lock.c
++++ b/lib/mbtowc-lock.c
+@@ -92,7 +92,7 @@ gl_get_mbtowc_lock (void)
+ 
+ # elif HAVE_PTHREAD_API
+ 
+-#  include <pthread.h>
++#  include "lib/pthread.h"
+ 
+ static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+ 
+@@ -109,7 +109,7 @@ gl_get_mbtowc_lock (void)
+ # elif HAVE_THREADS_H
+ 
+ #  include <threads.h>
+-#  include <stdlib.h>
++#  include "lib/stdlib.h"
+ 
+ static int volatile init_needed = 1;
+ static once_flag init_once = ONCE_FLAG_INIT;
+diff --git a/lib/mbtowc.c b/lib/mbtowc.c
+index 27ff35c..596584d 100644
+--- a/lib/mbtowc.c
++++ b/lib/mbtowc.c
+@@ -17,10 +17,10 @@
+ 
+ #include <config.h>
+ 
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #include <errno.h>
+-#include <string.h>
+-#include <wchar.h>
++#include "lib/string.h"
++#include "lib/wchar.h"
+ 
+ #include "mbtowc-impl.h"
+diff --git a/lib/mcel.h b/lib/mcel.h
+index 66a75bc..f8396bb 100644
+--- a/lib/mcel.h
++++ b/lib/mcel.h
+@@ -94,9 +94,9 @@
+ 
+ #include <verify.h>
+ 
+-#include <limits.h>
+-#include <stddef.h>
+-#include <uchar.h>
++#include "lib/limits.h"
++#include "lib/stddef.h"
++#include "lib/uchar.h"
+ 
+ _GL_INLINE_HEADER_BEGIN
+ #ifndef MCEL_INLINE
+diff --git a/lib/memchr.c b/lib/memchr.c
+index ef0d15f..c5588af 100644
+--- a/lib/memchr.c
++++ b/lib/memchr.c
+@@ -27,9 +27,9 @@
+ # include <config.h>
+ #endif
+ 
+-#include <string.h>
++#include "lib/string.h"
+ 
+-#include <stddef.h>
++#include "lib/stddef.h"
+ 
+ #if defined _LIBC
+ # include <memcopy.h>
+@@ -37,7 +37,7 @@
+ # define reg_char char
+ #endif
+ 
+-#include <limits.h>
++#include "lib/limits.h"
+ 
+ #if HAVE_BP_SYM_H || defined _LIBC
+ # include <bp-sym.h>
+diff --git a/lib/mempcpy.c b/lib/mempcpy.c
+index 8cc4be4..6e3613e 100644
+--- a/lib/mempcpy.c
++++ b/lib/mempcpy.c
+@@ -17,7 +17,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <string.h>
++#include "lib/string.h"
+ 
+ /* A function definition is only needed if HAVE_MEMPCPY is not defined.  */
+ #if !HAVE_MEMPCPY
+diff --git a/lib/memrchr.c b/lib/memrchr.c
+index b143fb0..c77c457 100644
+--- a/lib/memrchr.c
++++ b/lib/memrchr.c
+@@ -29,8 +29,8 @@
+ # define reg_char char
+ #endif
+ 
+-#include <string.h>
+-#include <limits.h>
++#include "lib/string.h"
++#include "lib/limits.h"
+ 
+ #undef __memrchr
+ #ifdef _LIBC
+diff --git a/lib/minmax.h b/lib/minmax.h
+index 355de4b..137da05 100644
+--- a/lib/minmax.h
++++ b/lib/minmax.h
+@@ -34,7 +34,7 @@
+    If more than one of these system headers define MIN and MAX, pick just
+    one of the headers (because the definitions most likely are the same).  */
+ #if HAVE_MINMAX_IN_LIMITS_H
+-# include <limits.h>
++# include "lib/limits.h"
+ #elif HAVE_MINMAX_IN_SYS_PARAM_H
+ # include <sys/param.h>
+ #endif
+diff --git a/lib/mkdir.c b/lib/mkdir.c
+index b680db2..69b0bbe 100644
+--- a/lib/mkdir.c
++++ b/lib/mkdir.c
+@@ -21,12 +21,12 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <sys/stat.h>
++#include "lib/sys/stat.h"
+ 
+ #include <errno.h>
+-#include <stdio.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdio.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ #include "dirname.h"
+ 
+diff --git a/lib/mkstemp.c b/lib/mkstemp.c
+index ac2592d..1ee4a24 100644
+--- a/lib/mkstemp.c
++++ b/lib/mkstemp.c
+@@ -19,7 +19,7 @@
+ # include <config.h>
+ #endif
+ 
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #if !_LIBC
+ # include "tempname.h"
+@@ -29,7 +29,7 @@
+ # endif
+ #endif
+ 
+-#include <stdio.h>
++#include "lib/stdio.h"
+ 
+ #ifndef __GT_FILE
+ # define __GT_FILE 0
+diff --git a/lib/mktime-internal.h b/lib/mktime-internal.h
+index 215be91..a52f45e 100644
+--- a/lib/mktime-internal.h
++++ b/lib/mktime-internal.h
+@@ -18,7 +18,7 @@
+    <https://www.gnu.org/licenses/>.  */
+ 
+ #ifndef _LIBC
+-# include <time.h>
++# include "lib/time.h"
+ # define __libc_lock_lock(lock) ((void) 0)
+ # define __libc_lock_unlock(lock) ((void) 0)
+ # define __tzset_unlocked() tzset ()
+diff --git a/lib/msvc-inval.c b/lib/msvc-inval.c
+index 1b51b1b..0e73ad6 100644
+--- a/lib/msvc-inval.c
++++ b/lib/msvc-inval.c
+@@ -24,7 +24,7 @@
+ 
+ /* Get _invalid_parameter_handler type and _set_invalid_parameter_handler
+    declaration.  */
+-# include <stdlib.h>
++# include "lib/stdlib.h"
+ 
+ # if MSVC_INVALID_PARAMETER_HANDLING == DEFAULT_HANDLING
+ 
+diff --git a/lib/nl_langinfo-lock.c b/lib/nl_langinfo-lock.c
+index 1ac2551..3b44379 100644
+--- a/lib/nl_langinfo-lock.c
++++ b/lib/nl_langinfo-lock.c
+@@ -92,7 +92,7 @@ gl_get_nl_langinfo_lock (void)
+ 
+ # elif HAVE_PTHREAD_API
+ 
+-#  include <pthread.h>
++#  include "lib/pthread.h"
+ 
+ static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+ 
+@@ -109,7 +109,7 @@ gl_get_nl_langinfo_lock (void)
+ # elif HAVE_THREADS_H
+ 
+ #  include <threads.h>
+-#  include <stdlib.h>
++#  include "lib/stdlib.h"
+ 
+ static int volatile init_needed = 1;
+ static once_flag init_once = ONCE_FLAG_INIT;
+diff --git a/lib/nl_langinfo.c b/lib/nl_langinfo.c
+index b87066b..7a979b1 100644
+--- a/lib/nl_langinfo.c
++++ b/lib/nl_langinfo.c
+@@ -18,15 +18,15 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <langinfo.h>
++#include "lib/langinfo.h"
+ 
+-#include <locale.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/locale.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ #if defined _WIN32 && ! defined __CYGWIN__
+ # define WIN32_LEAN_AND_MEAN  /* avoid including junk */
+ # include <windows.h>
+-# include <stdio.h>
++# include "lib/stdio.h"
+ #endif
+ 
+ #if REPLACE_NL_LANGINFO && !NL_LANGINFO_MTSAFE
+@@ -42,7 +42,7 @@
+ 
+ # elif HAVE_PTHREAD_API
+ 
+-#  include <pthread.h>
++#  include "lib/pthread.h"
+ #  if HAVE_THREADS_H && HAVE_WEAK_SYMBOLS
+ #   include <threads.h>
+ #   pragma weak thrd_exit
+@@ -379,7 +379,7 @@ rpl_nl_langinfo (nl_item item)
+    for old Unix platforms without locales, such as Linux libc5 or
+    BeOS.  */
+ 
+-# include <time.h>
++# include "lib/time.h"
+ 
+ char *
+ nl_langinfo (nl_item item)
+diff --git a/lib/open.c b/lib/open.c
+index 7415b48..592a8aa 100644
+--- a/lib/open.c
++++ b/lib/open.c
+@@ -23,8 +23,8 @@
+ #include <config.h>
+ 
+ /* Get the original definition of open.  It might be defined as a macro.  */
+-#include <fcntl.h>
+-#include <sys/types.h>
++#include "lib/fcntl.h"
++#include "lib/sys/types.h"
+ #undef __need_system_fcntl_h
+ 
+ static int
+@@ -43,17 +43,17 @@ orig_open (const char *filename, int flags, mode_t mode)
+    this include because of the preliminary #include <fcntl.h> above.  */
+ # include "fcntl.h"
+ #else
+-# include <fcntl.h>
++# include "lib/fcntl.h"
+ #endif
+ 
+ #include "cloexec.h"
+ 
+ #include <errno.h>
+ #include <stdarg.h>
+-#include <string.h>
+-#include <sys/types.h>
+-#include <sys/stat.h>
+-#include <unistd.h>
++#include "lib/string.h"
++#include "lib/sys/types.h"
++#include "lib/sys/stat.h"
++#include "lib/unistd.h"
+ 
+ #ifndef REPLACE_OPEN_DIRECTORY
+ # define REPLACE_OPEN_DIRECTORY 0
+diff --git a/lib/openat-die.c b/lib/openat-die.c
+index 3fbb5d8..8cffb69 100644
+--- a/lib/openat-die.c
++++ b/lib/openat-die.c
+@@ -19,10 +19,10 @@
+ 
+ #include "openat.h"
+ 
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #ifndef GNULIB_LIBPOSIX
+-# include <error.h>
++# include "lib/error.h"
+ #endif
+ 
+ #include "exitfail.h"
+diff --git a/lib/openat-priv.h b/lib/openat-priv.h
+index a851399..64b458f 100644
+--- a/lib/openat-priv.h
++++ b/lib/openat-priv.h
+@@ -21,8 +21,8 @@
+ #define _GL_HEADER_OPENAT_PRIV
+ 
+ #include <errno.h>
+-#include <limits.h>
+-#include <stdlib.h>
++#include "lib/limits.h"
++#include "lib/stdlib.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/openat-proc.c b/lib/openat-proc.c
+index a333a3f..3acb638 100644
+--- a/lib/openat-proc.c
++++ b/lib/openat-proc.c
+@@ -21,14 +21,14 @@
+ 
+ #include "openat-priv.h"
+ 
+-#include <sys/types.h>
+-#include <sys/stat.h>
+-#include <fcntl.h>
+-
+-#include <stdio.h>
+-#include <stdlib.h>
+-#include <string.h>
+-#include <unistd.h>
++#include "lib/sys/types.h"
++#include "lib/sys/stat.h"
++#include "lib/fcntl.h"
++
++#include "lib/stdio.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
++#include "lib/unistd.h"
+ 
+ #ifdef __KLIBC__ /* OS/2 */
+ # include <InnoTekLIBC/backend.h>
+diff --git a/lib/openat.c b/lib/openat.c
+index f6dce43..d0318e7 100644
+--- a/lib/openat.c
++++ b/lib/openat.c
+@@ -23,8 +23,8 @@
+ #include <config.h>
+ 
+ /* Get the original definition of open.  It might be defined as a macro.  */
+-#include <fcntl.h>
+-#include <sys/types.h>
++#include "lib/fcntl.h"
++#include "lib/sys/types.h"
+ #undef __need_system_fcntl_h
+ 
+ #if HAVE_OPENAT
+@@ -40,7 +40,7 @@ orig_openat (int fd, char const *filename, int flags, mode_t mode)
+    this include because of the preliminary #include <fcntl.h> above.  */
+ # include "fcntl.h"
+ #else
+-# include <fcntl.h>
++# include "lib/fcntl.h"
+ #endif
+ 
+ #include "openat.h"
+@@ -48,10 +48,10 @@ orig_openat (int fd, char const *filename, int flags, mode_t mode)
+ #include "cloexec.h"
+ 
+ #include <stdarg.h>
+-#include <stddef.h>
+-#include <stdlib.h>
+-#include <string.h>
+-#include <sys/stat.h>
++#include "lib/stddef.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
++#include "lib/sys/stat.h"
+ #include <errno.h>
+ 
+ #if HAVE_OPENAT
+diff --git a/lib/openat.h b/lib/openat.h
+index b24579b..875f180 100644
+--- a/lib/openat.h
++++ b/lib/openat.h
+@@ -25,11 +25,11 @@
+  #error "Please include config.h first."
+ #endif
+ 
+-#include <fcntl.h>
++#include "lib/fcntl.h"
+ 
+-#include <sys/types.h>
+-#include <sys/stat.h>
+-#include <unistd.h>
++#include "lib/sys/types.h"
++#include "lib/sys/stat.h"
++#include "lib/unistd.h"
+ 
+ _GL_INLINE_HEADER_BEGIN
+ 
+diff --git a/lib/opendir.c b/lib/opendir.c
+index a121e1b..179c693 100644
+--- a/lib/opendir.c
++++ b/lib/opendir.c
+@@ -17,10 +17,10 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <dirent.h>
++#include "lib/dirent.h"
+ 
+ #include <errno.h>
+-#include <stddef.h>
++#include "lib/stddef.h"
+ 
+ #if HAVE_OPENDIR
+ 
+@@ -33,15 +33,15 @@
+ 
+ #endif
+ 
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ #if GNULIB_defined_DIR
+ # include "dirent-private.h"
+ #endif
+ 
+ #if REPLACE_FCHDIR
+-# include <unistd.h>
++# include "lib/unistd.h"
+ #endif
+ 
+ #if defined _WIN32 && ! defined __CYGWIN__
+diff --git a/lib/pathmax.h b/lib/pathmax.h
+index 5f53551..6c65077 100644
+--- a/lib/pathmax.h
++++ b/lib/pathmax.h
+@@ -44,9 +44,9 @@
+ #  error "Please include config.h first."
+ # endif
+ 
+-# include <unistd.h>
++# include "lib/unistd.h"
+ 
+-# include <limits.h>
++# include "lib/limits.h"
+ 
+ # ifndef _POSIX_PATH_MAX
+ #  define _POSIX_PATH_MAX 256
+diff --git a/lib/pclose.c b/lib/pclose.c
+index 1c988da..30be1ae 100644
+--- a/lib/pclose.c
++++ b/lib/pclose.c
+@@ -17,7 +17,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <stdio.h>
++#include "lib/stdio.h"
+ 
+ /* Native Windows API.  */
+ 
+diff --git a/lib/popen.c b/lib/popen.c
+index d9d94a6..4fed1d7 100644
+--- a/lib/popen.c
++++ b/lib/popen.c
+@@ -19,12 +19,12 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <stdio.h>
++#include "lib/stdio.h"
+ 
+ #if defined _WIN32 && ! defined __CYGWIN__
+ /* Native Windows API.  */
+ 
+-# include <string.h>
++# include "lib/string.h"
+ 
+ FILE *
+ popen (const char *filename, const char *mode)
+@@ -41,9 +41,9 @@ popen (const char *filename, const char *mode)
+ #else
+ 
+ # include <errno.h>
+-# include <fcntl.h>
+-# include <stdlib.h>
+-# include <unistd.h>
++# include "lib/fcntl.h"
++# include "lib/stdlib.h"
++# include "lib/unistd.h"
+ 
+ # undef popen
+ 
+diff --git a/lib/progname.c b/lib/progname.c
+index 4a45ca3..f0c2b17 100644
+--- a/lib/progname.c
++++ b/lib/progname.c
+@@ -23,9 +23,9 @@
+ #include "progname.h"
+ 
+ #include <errno.h> /* get program_invocation_name declaration */
+-#include <stdio.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdio.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ 
+ /* String containing name the program is called with.
+diff --git a/lib/pthread-once.c b/lib/pthread-once.c
+index b19dae5..4c07a43 100644
+--- a/lib/pthread-once.c
++++ b/lib/pthread-once.c
+@@ -19,7 +19,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <pthread.h>
++#include "lib/pthread.h"
+ 
+ #if (defined _WIN32 && ! defined __CYGWIN__) && USE_WINDOWS_THREADS
+ # include "windows-once.h"
+@@ -40,7 +40,7 @@ pthread_once (pthread_once_t *once_control, void (*initfunction) (void))
+ 
+ # if defined __CYGWIN__
+ 
+-#  include <stdlib.h>
++#  include "lib/stdlib.h"
+ 
+ int
+ pthread_once (pthread_once_t *once_control, void (*initfunction) (void))
+diff --git a/lib/quote.h b/lib/quote.h
+index a35e73a..8ebf06d 100644
+--- a/lib/quote.h
++++ b/lib/quote.h
+@@ -18,7 +18,7 @@
+ #ifndef QUOTE_H_
+ #define QUOTE_H_ 1
+ 
+-#include <stddef.h>
++#include "lib/stddef.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/quotearg.c b/lib/quotearg.c
+index a587cd5..a4f9943 100644
+--- a/lib/quotearg.c
++++ b/lib/quotearg.c
+@@ -35,14 +35,14 @@
+ #include "c-strcaseeq.h"
+ #include "localcharset.h"
+ 
+-#include <ctype.h>
++#include "lib/ctype.h"
+ #include <errno.h>
+-#include <limits.h>
+-#include <stdint.h>
+-#include <stdlib.h>
+-#include <string.h>
+-#include <uchar.h>
+-#include <wchar.h>
++#include "lib/limits.h"
++#include "lib/stdint.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
++#include "lib/uchar.h"
++#include "lib/wchar.h"
+ 
+ #include "gettext.h"
+ #define _(msgid) dgettext ("gnulib", msgid)
+diff --git a/lib/quotearg.h b/lib/quotearg.h
+index 27a0989..6652fc9 100644
+--- a/lib/quotearg.h
++++ b/lib/quotearg.h
+@@ -26,7 +26,7 @@
+ # error "Please include config.h first."
+ #endif
+ 
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/raise.c b/lib/raise.c
+index f0db223..b7639af 100644
+--- a/lib/raise.c
++++ b/lib/raise.c
+@@ -20,7 +20,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <signal.h>
++#include "lib/signal.h"
+ 
+ #if HAVE_RAISE
+ /* Native Windows platform.  */
+@@ -41,7 +41,7 @@ static int raise_nothrow (int sig);
+ #else
+ /* An old Unix platform.  */
+ 
+-# include <unistd.h>
++# include "lib/unistd.h"
+ 
+ #endif
+ 
+diff --git a/lib/rawmemchr.c b/lib/rawmemchr.c
+index afdd767..d9d7869 100644
+--- a/lib/rawmemchr.c
++++ b/lib/rawmemchr.c
+@@ -17,13 +17,13 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <string.h>
++#include "lib/string.h"
+ 
+ /* A function definition is needed only if HAVE_RAWMEMCHR is not defined.  */
+ #if !HAVE_RAWMEMCHR
+ 
+-# include <limits.h>
+-# include <stdint.h>
++# include "lib/limits.h"
++# include "lib/stdint.h"
+ 
+ 
+ /* Find the first occurrence of C in S.  */
+diff --git a/lib/readdir.c b/lib/readdir.c
+index 78225ec..8c8fbc3 100644
+--- a/lib/readdir.c
++++ b/lib/readdir.c
+@@ -17,10 +17,10 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <dirent.h>
++#include "lib/dirent.h"
+ 
+ #include <errno.h>
+-#include <stddef.h>
++#include "lib/stddef.h"
+ 
+ #if GNULIB_defined_DIR
+ # include "dirent-private.h"
+diff --git a/lib/readlink.c b/lib/readlink.c
+index f8c4d2a..b287dd2 100644
+--- a/lib/readlink.c
++++ b/lib/readlink.c
+@@ -17,11 +17,11 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <unistd.h>
++#include "lib/unistd.h"
+ 
+ #include <errno.h>
+-#include <string.h>
+-#include <sys/stat.h>
++#include "lib/string.h"
++#include "lib/sys/stat.h"
+ 
+ #if !HAVE_READLINK
+ 
+diff --git a/lib/readlinkat.c b/lib/readlinkat.c
+index 4d7851d..f68e6ca 100644
+--- a/lib/readlinkat.c
++++ b/lib/readlinkat.c
+@@ -19,12 +19,12 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <unistd.h>
++#include "lib/unistd.h"
+ 
+ #include <errno.h>
+-#include <stdlib.h>
+-#include <string.h>
+-#include <sys/stat.h>
++#include "lib/stdlib.h"
++#include "lib/string.h"
++#include "lib/sys/stat.h"
+ 
+ #if HAVE_READLINKAT
+ 
+diff --git a/lib/realloc.c b/lib/realloc.c
+index 4237501..949cd4f 100644
+--- a/lib/realloc.c
++++ b/lib/realloc.c
+@@ -23,10 +23,10 @@
+ #include <config.h>
+ 
+ #define _GL_REALLOC_INLINE _GL_EXTERN_INLINE
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #include <errno.h>
+-#include <stdckdint.h>
++#include "lib/stdckdint.h"
+ 
+ #ifdef __CHERI_PURE_CAPABILITY__
+ # include <cheri.h>
+diff --git a/lib/reallocarray.c b/lib/reallocarray.c
+index 77e8d84..31160bf 100644
+--- a/lib/reallocarray.c
++++ b/lib/reallocarray.c
+@@ -19,8 +19,8 @@
+ 
+ #include <config.h>
+ 
+-#include <stdckdint.h>
+-#include <stdlib.h>
++#include "lib/stdckdint.h"
++#include "lib/stdlib.h"
+ #include <errno.h>
+ 
+ void *
+diff --git a/lib/regex.c b/lib/regex.c
+index f5f6552..0ca5adb 100644
+--- a/lib/regex.c
++++ b/lib/regex.c
+@@ -61,9 +61,9 @@
+ /* On some systems, limits.h sets RE_DUP_MAX to a lower value than
+    GNU regex allows.  Include it before <regex.h>, which correctly
+    #undefs RE_DUP_MAX and sets it to the right value.  */
+-#include <limits.h>
++#include "lib/limits.h"
+ 
+-#include <regex.h>
++#include "lib/regex.h"
+ #include "regex_internal.h"
+ 
+ #include "regex_internal.c"
+diff --git a/lib/regex.h b/lib/regex.h
+index 67a3aa7..dd854ab 100644
+--- a/lib/regex.h
++++ b/lib/regex.h
+@@ -20,7 +20,7 @@
+ #ifndef _REGEX_H
+ #define _REGEX_H 1
+ 
+-#include <sys/types.h>
++#include "lib/sys/types.h"
+ 
+ /* Allow the use in C++ code.  */
+ #ifdef __cplusplus
+@@ -286,7 +286,7 @@ extern reg_syntax_t re_syntax_options;
+    systems might define this in <limits.h>, but we want our
+    value, so remove any previous define.  */
+ # ifdef _REGEX_INCLUDE_LIMITS_H
+-#  include <limits.h>
++#  include "lib/limits.h"
+ # endif
+ # ifdef RE_DUP_MAX
+ #  undef RE_DUP_MAX
+diff --git a/lib/regex_internal.h b/lib/regex_internal.h
+index 1f29729..3ba57c3 100644
+--- a/lib/regex_internal.h
++++ b/lib/regex_internal.h
+@@ -20,17 +20,17 @@
+ #ifndef _REGEX_INTERNAL_H
+ #define _REGEX_INTERNAL_H 1
+ 
+-#include <ctype.h>
+-#include <stdio.h>
+-#include <stdlib.h>
+-#include <string.h>
+-
+-#include <langinfo.h>
+-#include <locale.h>
+-#include <wchar.h>
+-#include <wctype.h>
+-#include <stdckdint.h>
+-#include <stdint.h>
++#include "lib/ctype.h"
++#include "lib/stdio.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
++
++#include "lib/langinfo.h"
++#include "lib/locale.h"
++#include "lib/wchar.h"
++#include "lib/wctype.h"
++#include "lib/stdckdint.h"
++#include "lib/stdint.h"
+ 
+ #ifndef _LIBC
+ # include <dynarray.h>
+@@ -61,7 +61,7 @@
+ # define lock_lock(lock) glthread_lock_lock (&(lock))
+ # define lock_unlock(lock) glthread_lock_unlock (&(lock))
+ #elif defined GNULIB_PTHREAD && !defined GNULIB_REGEX_SINGLE_THREAD
+-# include <pthread.h>
++# include "lib/pthread.h"
+ # define lock_define(name) pthread_mutex_t name;
+ # define lock_init(lock) pthread_mutex_init (&(lock), 0)
+ # define lock_fini(lock) pthread_mutex_destroy (&(lock))
+diff --git a/lib/same-inode.h b/lib/same-inode.h
+index 70f17b0..921cb7e 100644
+--- a/lib/same-inode.h
++++ b/lib/same-inode.h
+@@ -23,7 +23,7 @@
+  #error "Please include config.h first."
+ #endif
+ 
+-#include <sys/stat.h>
++#include "lib/sys/stat.h"
+ 
+ _GL_INLINE_HEADER_BEGIN
+ #ifndef SAME_INODE_INLINE
+diff --git a/lib/save-cwd.c b/lib/save-cwd.c
+index fa4c708..64a23d5 100644
+--- a/lib/save-cwd.c
++++ b/lib/save-cwd.c
+@@ -23,9 +23,9 @@
+ #include "save-cwd.h"
+ 
+ #include <errno.h>
+-#include <fcntl.h>
+-#include <stdio.h>
+-#include <stdlib.h>
++#include "lib/fcntl.h"
++#include "lib/stdio.h"
++#include "lib/stdlib.h"
+ 
+ #include "chdir-long.h"
+ 
+diff --git a/lib/setenv.c b/lib/setenv.c
+index ef301d4..2518945 100644
+--- a/lib/setenv.c
++++ b/lib/setenv.c
+@@ -23,19 +23,19 @@
+ # include <config.h>
+ #endif
+ 
+-#include <alloca.h>
++#include "lib/alloca.h"
+ 
+ /* Specification.  */
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #include <errno.h>
+ #ifndef __set_errno
+ # define __set_errno(ev) ((errno) = (ev))
+ #endif
+ 
+-#include <string.h>
++#include "lib/string.h"
+ #if _LIBC || HAVE_UNISTD_H
+-# include <unistd.h>
++# include "lib/unistd.h"
+ #endif
+ 
+ #if defined _WIN32 && ! defined __CYGWIN__
+diff --git a/lib/setlocale-lock.c b/lib/setlocale-lock.c
+index 87e0048..526954d 100644
+--- a/lib/setlocale-lock.c
++++ b/lib/setlocale-lock.c
+@@ -92,7 +92,7 @@ gl_get_setlocale_null_lock (void)
+ 
+ # elif HAVE_PTHREAD_API
+ 
+-#  include <pthread.h>
++#  include "lib/pthread.h"
+ 
+ static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+ 
+@@ -109,7 +109,7 @@ gl_get_setlocale_null_lock (void)
+ # elif HAVE_THREADS_H
+ 
+ #  include <threads.h>
+-#  include <stdlib.h>
++#  include "lib/stdlib.h"
+ 
+ static int volatile init_needed = 1;
+ static once_flag init_once = ONCE_FLAG_INIT;
+diff --git a/lib/setlocale_null-unlocked.c b/lib/setlocale_null-unlocked.c
+index 72729e6..f0f8678 100644
+--- a/lib/setlocale_null-unlocked.c
++++ b/lib/setlocale_null-unlocked.c
+@@ -22,10 +22,10 @@
+ #include "setlocale_null.h"
+ 
+ #include <errno.h>
+-#include <locale.h>
+-#include <string.h>
++#include "lib/locale.h"
++#include "lib/string.h"
+ #if defined _WIN32 && !defined __CYGWIN__
+-# include <wchar.h>
++# include "lib/wchar.h"
+ #endif
+ 
+ /* Use the system's setlocale() function, not the gnulib override, here.  */
+diff --git a/lib/setlocale_null.c b/lib/setlocale_null.c
+index 2988964..f086bcf 100644
+--- a/lib/setlocale_null.c
++++ b/lib/setlocale_null.c
+@@ -22,9 +22,9 @@
+ #include "setlocale_null.h"
+ 
+ #include <errno.h>
+-#include <locale.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/locale.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ #if !(SETLOCALE_NULL_ALL_MTSAFE && SETLOCALE_NULL_ONE_MTSAFE)
+ 
+@@ -39,7 +39,7 @@
+ 
+ # elif HAVE_PTHREAD_API
+ 
+-#  include <pthread.h>
++#  include "lib/pthread.h"
+ #  if HAVE_THREADS_H && HAVE_WEAK_SYMBOLS
+ #   include <threads.h>
+ #   pragma weak thrd_exit
+diff --git a/lib/setlocale_null.h b/lib/setlocale_null.h
+index 3fcb7a8..7b6bb4b 100644
+--- a/lib/setlocale_null.h
++++ b/lib/setlocale_null.h
+@@ -19,7 +19,7 @@
+ #ifndef _SETLOCALE_NULL_H
+ #define _SETLOCALE_NULL_H
+ 
+-#include <stddef.h>
++#include "lib/stddef.h"
+ 
+ #include "arg-nonnull.h"
+ 
+diff --git a/lib/sh-quote.c b/lib/sh-quote.c
+index 206e8e4..d777ec2 100644
+--- a/lib/sh-quote.c
++++ b/lib/sh-quote.c
+@@ -20,7 +20,7 @@
+ /* Specification.  */
+ #include "sh-quote.h"
+ 
+-#include <string.h>
++#include "lib/string.h"
+ 
+ #include "quotearg.h"
+ #include "xalloc.h"
+diff --git a/lib/sh-quote.h b/lib/sh-quote.h
+index 8f57be5..03d1ba9 100644
+--- a/lib/sh-quote.h
++++ b/lib/sh-quote.h
+@@ -27,7 +27,7 @@
+  #error "Please include config.h first."
+ #endif
+ 
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/sig-handler.h b/lib/sig-handler.h
+index 12a203a..8990d60 100644
+--- a/lib/sig-handler.h
++++ b/lib/sig-handler.h
+@@ -23,7 +23,7 @@
+  #error "Please include config.h first."
+ #endif
+ 
+-#include <signal.h>
++#include "lib/signal.h"
+ 
+ _GL_INLINE_HEADER_BEGIN
+ #ifndef SIG_HANDLER_INLINE
+diff --git a/lib/sigaction.c b/lib/sigaction.c
+index 284bfd7..a8c44a1 100644
+--- a/lib/sigaction.c
++++ b/lib/sigaction.c
+@@ -18,11 +18,11 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <signal.h>
++#include "lib/signal.h"
+ 
+ #include <errno.h>
+-#include <stdint.h>
+-#include <stdlib.h>
++#include "lib/stdint.h"
++#include "lib/stdlib.h"
+ 
+ /* This implementation of sigaction is tailored to native Windows behavior:
+    signal() has SysV semantics (ie. the handler is uninstalled before
+diff --git a/lib/sigprocmask.c b/lib/sigprocmask.c
+index f79386c..1202586 100644
+--- a/lib/sigprocmask.c
++++ b/lib/sigprocmask.c
+@@ -18,11 +18,11 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <signal.h>
++#include "lib/signal.h"
+ 
+ #include <errno.h>
+-#include <stdint.h>
+-#include <stdlib.h>
++#include "lib/stdint.h"
++#include "lib/stdlib.h"
+ 
+ #if HAVE_MSVC_INVALID_PARAMETER_HANDLER
+ # include "msvc-inval.h"
+diff --git a/lib/sigsegv.c b/lib/sigsegv.c
+index d051981..267b408 100644
+--- a/lib/sigsegv.c
++++ b/lib/sigsegv.c
+@@ -23,10 +23,10 @@
+ #include "sigsegv.h"
+ 
+ #include <errno.h>
+-#include <stdio.h> /* declares perror */
+-#include <stdint.h> /* defines uintptr_t */
+-#include <stdlib.h>
+-#include <signal.h>
++#include "lib/stdio.h" /* declares perror */
++#include "lib/stdint.h" /* defines uintptr_t */
++#include "lib/stdlib.h"
++#include "lib/signal.h"
+ #if HAVE_GETRLIMIT
+ # include <sys/resource.h> /* declares struct rlimit */
+ #endif
+diff --git a/lib/stackvma.c b/lib/stackvma.c
+index d08347f..dc7fd8b 100644
+--- a/lib/stackvma.c
++++ b/lib/stackvma.c
+@@ -42,8 +42,8 @@
+ /* Specification.  */
+ #include "stackvma.h"
+ 
+-#include <stdio.h>
+-#include <stdlib.h>
++#include "lib/stdio.h"
++#include "lib/stdlib.h"
+ 
+ /* =========================== stackvma-simple.c =========================== */
+ 
+@@ -91,14 +91,14 @@ simple_is_near_this (uintptr_t addr, struct vma_struct *vma)
+     || defined __CYGWIN__
+ 
+ # include <errno.h> /* errno, EINTR */
+-# include <fcntl.h> /* open, O_RDONLY */
+-# include <stddef.h> /* size_t */
+-# include <unistd.h> /* getpagesize, lseek, read, close */
+-# include <sys/types.h>
++# include "lib/fcntl.h" /* open, O_RDONLY */
++# include "lib/stddef.h" /* size_t */
++# include "lib/unistd.h" /* getpagesize, lseek, read, close */
++# include "lib/sys/types.h"
+ # include <sys/mman.h> /* mmap, munmap */
+ 
+ # if defined __linux__ || defined __ANDROID__
+-#  include <limits.h> /* PATH_MAX */
++#  include "lib/limits.h" /* PATH_MAX */
+ # endif
+ 
+ /* Buffered read-only streams.
+@@ -604,8 +604,8 @@ vma_iterate (struct callback_locals *locals)
+     /* || (defined __APPLE__ && defined __MACH__) */ \
+     || defined _AIX || defined __sun
+ 
+-# include <unistd.h> /* getpagesize, mincore */
+-# include <sys/types.h>
++# include "lib/unistd.h" /* getpagesize, mincore */
++# include "lib/sys/types.h"
+ # include <sys/mman.h> /* mincore */
+ 
+ /* The AIX declaration of mincore() uses 'caddr_t', whereas the other platforms
+@@ -1163,8 +1163,8 @@ sigsegv_get_vma (uintptr_t address, struct vma_struct *vma)
+ 
+ #elif defined __OpenBSD__ /* OpenBSD */
+ 
+-# include <unistd.h> /* getpagesize, mincore */
+-# include <sys/types.h>
++# include "lib/unistd.h" /* getpagesize, mincore */
++# include "lib/sys/types.h"
+ # include <sys/mman.h> /* mincore */
+ 
+ /* Cache for getpagesize().  */
+@@ -1474,11 +1474,11 @@ sigsegv_get_vma (uintptr_t req_address, struct vma_struct *vma)
+ 
+ #elif defined _AIX /* AIX */
+ 
+-# include <unistd.h> /* getpagesize, getpid, close, read */
++# include "lib/unistd.h" /* getpagesize, getpid, close, read */
+ # include <errno.h> /* EINTR */
+-# include <fcntl.h> /* open */
+-# include <string.h> /* memcpy */
+-# include <sys/types.h>
++# include "lib/fcntl.h" /* open */
++# include "lib/string.h" /* memcpy */
++# include "lib/sys/types.h"
+ # include <sys/mman.h> /* mmap, munmap */
+ # include <sys/procfs.h> /* prmap_t */
+ # include <sys/utsname.h> /* uname */
+@@ -1780,13 +1780,13 @@ sigsegv_get_vma (uintptr_t address, struct vma_struct *vma)
+ #elif defined __sgi || defined __sun /* IRIX, Solaris */
+ 
+ # include <errno.h> /* errno, EINTR */
+-# include <fcntl.h> /* open, O_RDONLY */
+-# include <stddef.h> /* size_t */
+-# include <unistd.h> /* getpagesize, getpid, read, close */
+-# include <sys/types.h>
++# include "lib/fcntl.h" /* open, O_RDONLY */
++# include "lib/stddef.h" /* size_t */
++# include "lib/unistd.h" /* getpagesize, getpid, read, close */
++# include "lib/sys/types.h"
+ # include <sys/mman.h> /* mmap, munmap */
+-# include <sys/stat.h> /* fstat */
+-# include <string.h> /* memcpy */
++# include "lib/sys/stat.h" /* fstat */
++# include "lib/string.h" /* memcpy */
+ 
+ /* Try to use the newer ("structured") /proc filesystem API, if supported.  */
+ # define _STRUCTURED_PROC 1
+diff --git a/lib/stackvma.h b/lib/stackvma.h
+index 307de84..4b0f3d3 100644
+--- a/lib/stackvma.h
++++ b/lib/stackvma.h
+@@ -20,7 +20,7 @@
+ #ifndef _STACKVMA_H
+ #define _STACKVMA_H
+ 
+-#include <stdint.h>
++#include "lib/stdint.h"
+ 
+ /* Describes a virtual memory area, with some info about the gap between
+    it and the next or previous virtual memory area.  */
+diff --git a/lib/stat-time.h b/lib/stat-time.h
+index 6981393..17e9df0 100644
+--- a/lib/stat-time.h
++++ b/lib/stat-time.h
+@@ -27,10 +27,10 @@
+ #endif
+ 
+ #include <errno.h>
+-#include <stdckdint.h>
+-#include <stddef.h>
+-#include <sys/stat.h>
+-#include <time.h>
++#include "lib/stdckdint.h"
++#include "lib/stddef.h"
++#include "lib/sys/stat.h"
++#include "lib/time.h"
+ 
+ _GL_INLINE_HEADER_BEGIN
+ #ifndef _GL_STAT_TIME_INLINE
+diff --git a/lib/stat-w32.c b/lib/stat-w32.c
+index 8da8fe5..498bae6 100644
+--- a/lib/stat-w32.c
++++ b/lib/stat-w32.c
+@@ -38,12 +38,12 @@
+ # define WIN32_ASSUME_VISTA (_WIN32_WINNT >= _WIN32_WINNT_VISTA)
+ #endif
+ 
+-#include <sys/types.h>
+-#include <sys/stat.h>
++#include "lib/sys/types.h"
++#include "lib/sys/stat.h"
+ #include <errno.h>
+-#include <limits.h>
+-#include <string.h>
+-#include <unistd.h>
++#include "lib/limits.h"
++#include "lib/string.h"
++#include "lib/unistd.h"
+ #include <windows.h>
+ 
+ /* Specification.  */
+diff --git a/lib/stat.c b/lib/stat.c
+index ebed63e..d48b271 100644
+--- a/lib/stat.c
++++ b/lib/stat.c
+@@ -23,8 +23,8 @@
+ #include <config.h>
+ 
+ /* Get the original definition of stat.  It might be defined as a macro.  */
+-#include <sys/types.h>
+-#include <sys/stat.h>
++#include "lib/sys/types.h"
++#include "lib/sys/stat.h"
+ #undef __need_system_sys_stat_h
+ 
+ #if defined _WIN32 && ! defined __CYGWIN__
+@@ -48,14 +48,14 @@ orig_stat (const char *filename, struct stat *buf)
+    above.  */
+ # include "sys/stat.h"
+ #else
+-# include <sys/stat.h>
++# include "lib/sys/stat.h"
+ #endif
+ 
+ #include "stat-time.h"
+ 
+ #include <errno.h>
+-#include <limits.h>
+-#include <string.h>
++#include "lib/limits.h"
++#include "lib/string.h"
+ #include "filename.h"
+ #include "malloca.h"
+ 
+diff --git a/lib/stdbit.c b/lib/stdbit.c
+index e1dfdd6..fa93c48 100644
+--- a/lib/stdbit.c
++++ b/lib/stdbit.c
+@@ -20,4 +20,4 @@
+ #define _GL_STDBIT_INLINE _GL_EXTERN_INLINE
+ #include <config.h>
+ 
+-#include <stdbit.h>
++#include "lib/stdbit.h"
+diff --git a/lib/stdc_bit_width.c b/lib/stdc_bit_width.c
+index 27fde72..c02848f 100644
+--- a/lib/stdc_bit_width.c
++++ b/lib/stdc_bit_width.c
+@@ -17,4 +17,4 @@
+ #include <config.h>
+ 
+ #define _GL_STDC_BIT_WIDTH_INLINE _GL_EXTERN_INLINE
+-#include <stdbit.h>
++#include "lib/stdbit.h"
+diff --git a/lib/stdc_leading_zeros.c b/lib/stdc_leading_zeros.c
+index 2597c43..42b4783 100644
+--- a/lib/stdc_leading_zeros.c
++++ b/lib/stdc_leading_zeros.c
+@@ -17,4 +17,4 @@
+ #include <config.h>
+ 
+ #define _GL_STDC_LEADING_ZEROS_INLINE _GL_EXTERN_INLINE
+-#include <stdbit.h>
++#include "lib/stdbit.h"
+diff --git a/lib/stdio-read.c b/lib/stdio-read.c
+index 70452b4..26a2969 100644
+--- a/lib/stdio-read.c
++++ b/lib/stdio-read.c
+@@ -18,7 +18,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <stdio.h>
++#include "lib/stdio.h"
+ 
+ /* Replace these functions only if module 'nonblocking' is requested.  */
+ #if GNULIB_NONBLOCKING
+diff --git a/lib/stdio-write.c b/lib/stdio-write.c
+index b5073ad..2114a87 100644
+--- a/lib/stdio-write.c
++++ b/lib/stdio-write.c
+@@ -18,7 +18,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <stdio.h>
++#include "lib/stdio.h"
+ 
+ /* Replace these functions only if module 'nonblocking' or module 'sigpipe' is
+    requested.  */
+@@ -33,7 +33,7 @@
+ # if defined _WIN32 && ! defined __CYGWIN__
+ 
+ #  include <errno.h>
+-#  include <signal.h>
++#  include "lib/signal.h"
+ #  include <io.h>
+ 
+ #  define WIN32_LEAN_AND_MEAN  /* avoid including junk */
+diff --git a/lib/stdlib.c b/lib/stdlib.c
+index 6a06f5b..bd8f109 100644
+--- a/lib/stdlib.c
++++ b/lib/stdlib.c
+@@ -18,4 +18,4 @@
+ #define _GL_STDLIB_INLINE _GL_EXTERN_INLINE
+ #include <config.h>
+ 
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+diff --git a/lib/stdopen.c b/lib/stdopen.c
+index b684281..16399b1 100644
+--- a/lib/stdopen.c
++++ b/lib/stdopen.c
+@@ -21,9 +21,9 @@
+ 
+ #include "stdopen.h"
+ 
+-#include <sys/stat.h>
+-#include <fcntl.h>
+-#include <unistd.h>
++#include "lib/sys/stat.h"
++#include "lib/fcntl.h"
++#include "lib/unistd.h"
+ #include <errno.h>
+ 
+ /* Try to ensure that all of the standard file numbers (0, 1, 2)
+diff --git a/lib/stpcpy.c b/lib/stpcpy.c
+index 6d5458c..9fe8ba4 100644
+--- a/lib/stpcpy.c
++++ b/lib/stpcpy.c
+@@ -20,7 +20,7 @@
+ 
+ #include <config.h>
+ 
+-#include <string.h>
++#include "lib/string.h"
+ 
+ #undef __stpcpy
+ #ifdef _LIBC
+diff --git a/lib/strcasecmp.c b/lib/strcasecmp.c
+index 16626d4..b697b6e 100644
+--- a/lib/strcasecmp.c
++++ b/lib/strcasecmp.c
+@@ -17,10 +17,10 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <strings.h>
++#include "lib/strings.h"
+ 
+-#include <ctype.h>
+-#include <limits.h>
++#include "lib/ctype.h"
++#include "lib/limits.h"
+ 
+ /* Compare strings S1 and S2, ignoring case, returning less than, equal to or
+    greater than zero if S1 is lexicographically less than, equal to or greater
+diff --git a/lib/strdup.c b/lib/strdup.c
+index c979648..4b8a7eb 100644
+--- a/lib/strdup.c
++++ b/lib/strdup.c
+@@ -21,9 +21,9 @@
+ #endif
+ 
+ /* Get specification.  */
+-#include <string.h>
++#include "lib/string.h"
+ 
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #undef __strdup
+ #ifdef _LIBC
+diff --git a/lib/streq.h b/lib/streq.h
+index 9d91a6a..fbe49ce 100644
+--- a/lib/streq.h
++++ b/lib/streq.h
+@@ -19,7 +19,7 @@
+ #ifndef _GL_STREQ_H
+ #define _GL_STREQ_H
+ 
+-#include <string.h>
++#include "lib/string.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/strerror-override.h b/lib/strerror-override.h
+index 653ea0a..ba70533 100644
+--- a/lib/strerror-override.h
++++ b/lib/strerror-override.h
+@@ -24,7 +24,7 @@
+ #endif
+ 
+ #include <errno.h>
+-#include <stddef.h>
++#include "lib/stddef.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/strerror.c b/lib/strerror.c
+index 72572ae..07a70de 100644
+--- a/lib/strerror.c
++++ b/lib/strerror.c
+@@ -18,12 +18,12 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <string.h>
++#include "lib/string.h"
+ 
+ #include <errno.h>
+-#include <stdio.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdio.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ #include "intprops.h"
+ #include "strerror-override.h"
+diff --git a/lib/strftime.c b/lib/strftime.c
+index 27feb1d..e044235 100644
+--- a/lib/strftime.c
++++ b/lib/strftime.c
+@@ -54,10 +54,10 @@
+ #if USE_C_LOCALE
+ # include "c-ctype.h"
+ #else
+-# include <ctype.h>
++# include "lib/ctype.h"
+ #endif
+ #include <errno.h>
+-#include <time.h>
++#include "lib/time.h"
+ 
+ /* Do multibyte processing if multibyte encodings are supported, unless
+    multibyte sequences are safe in formats.  Multibyte sequences are
+@@ -77,21 +77,21 @@
+ #define DO_MULTIBYTE (! MULTIBYTE_IS_FORMAT_SAFE)
+ 
+ #if DO_MULTIBYTE
+-# include <wchar.h>
++# include "lib/wchar.h"
+   static const mbstate_t mbstate_zero;
+ #endif
+ 
+-#include <limits.h>
+-#include <locale.h>
+-#include <stdckdint.h>
+-#include <stddef.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/limits.h"
++#include "lib/locale.h"
++#include "lib/stdckdint.h"
++#include "lib/stddef.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ #if (defined __NetBSD__ || defined __sun) && REQUIRE_GNUISH_STRFTIME_AM_PM
+ # include "localename.h"
+ #elif defined _WIN32 && !defined __CYGWIN__
+-# include <wchar.h>
++# include "lib/wchar.h"
+ #endif
+ 
+ #include "attribute.h"
+diff --git a/lib/strftime.h b/lib/strftime.h
+index 3b7e20f..23b957d 100644
+--- a/lib/strftime.h
++++ b/lib/strftime.h
+@@ -15,7 +15,7 @@
+    You should have received a copy of the GNU Lesser General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
+ 
+-#include <time.h>
++#include "lib/time.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/strncasecmp.c b/lib/strncasecmp.c
+index 7d7c5b7..c758f52 100644
+--- a/lib/strncasecmp.c
++++ b/lib/strncasecmp.c
+@@ -17,10 +17,10 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <strings.h>
++#include "lib/strings.h"
+ 
+-#include <ctype.h>
+-#include <limits.h>
++#include "lib/ctype.h"
++#include "lib/limits.h"
+ 
+ /* Compare no more than N bytes of strings S1 and S2, ignoring case,
+    returning less than, equal to or greater than zero if S1 is
+diff --git a/lib/strnlen.c b/lib/strnlen.c
+index f699041..f967d53 100644
+--- a/lib/strnlen.c
++++ b/lib/strnlen.c
+@@ -16,7 +16,7 @@
+ 
+ #include <config.h>
+ 
+-#include <string.h>
++#include "lib/string.h"
+ 
+ /* Find the length of S, but scan at most MAXLEN bytes.
+    S must be a string if it starts with fewer than MAXLEN initialized bytes.
+diff --git a/lib/strnlen1.c b/lib/strnlen1.c
+index adc330a..282205d 100644
+--- a/lib/strnlen1.c
++++ b/lib/strnlen1.c
+@@ -19,7 +19,7 @@
+ /* Specification.  */
+ #include "strnlen1.h"
+ 
+-#include <string.h>
++#include "lib/string.h"
+ 
+ /* Find the length of STRING + 1, but scan at most MAXLEN bytes.
+    If no '\0' terminator is found in that many characters, return MAXLEN.  */
+diff --git a/lib/strnlen1.h b/lib/strnlen1.h
+index 82d073f..5cec1e7 100644
+--- a/lib/strnlen1.h
++++ b/lib/strnlen1.h
+@@ -22,7 +22,7 @@
+  #error "Please include config.h first."
+ #endif
+ 
+-#include <stddef.h>
++#include "lib/stddef.h"
+ 
+ 
+ #ifdef __cplusplus
+diff --git a/lib/strptime.c b/lib/strptime.c
+index 2b6193a..00365c7 100644
+--- a/lib/strptime.c
++++ b/lib/strptime.c
+@@ -19,16 +19,16 @@
+ # include <config.h>
+ #endif
+ 
+-#include <time.h>
++#include "lib/time.h"
+ 
+ #include <assert.h>
+-#include <ctype.h>
++#include "lib/ctype.h"
+ #ifdef _LIBC
+-# include <langinfo.h>
++# include "lib/langinfo.h"
+ #endif
+-#include <limits.h>
+-#include <string.h>
+-#include <strings.h>
++#include "lib/limits.h"
++#include "lib/string.h"
++#include "lib/strings.h"
+ 
+ #ifdef _LIBC
+ # include <stdbool.h>
+diff --git a/lib/strtoimax.c b/lib/strtoimax.c
+index 1dec813..2a6ab55 100644
+--- a/lib/strtoimax.c
++++ b/lib/strtoimax.c
+@@ -21,9 +21,9 @@
+ #include <config.h>
+ 
+ /* Verify interface.  */
+-#include <inttypes.h>
++#include "lib/inttypes.h"
+ 
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #ifdef UNSIGNED
+ # ifndef HAVE_DECL_STRTOULL
+diff --git a/lib/strtol.c b/lib/strtol.c
+index 0bcc6f4..1cdb8a4 100644
+--- a/lib/strtol.c
++++ b/lib/strtol.c
+@@ -25,16 +25,16 @@
+ # include <config.h>
+ #endif
+ 
+-#include <ctype.h>
++#include "lib/ctype.h"
+ #include <errno.h>
+ #ifndef __set_errno
+ # define __set_errno(Val) errno = (Val)
+ #endif
+ 
+-#include <limits.h>
+-#include <stddef.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/limits.h"
++#include "lib/stddef.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ #ifdef USE_NUMBER_GROUPING
+ # include "../locale/localeinfo.h"
+@@ -157,8 +157,8 @@
+ #endif
+ 
+ #ifdef USE_WIDE_CHAR
+-# include <wchar.h>
+-# include <wctype.h>
++# include "lib/wchar.h"
++# include "lib/wctype.h"
+ # define L_(Ch) L##Ch
+ # define UCHAR_TYPE wint_t
+ # define STRING_TYPE wchar_t
+diff --git a/lib/system-quote.c b/lib/system-quote.c
+index bd963e8..086b0a8 100644
+--- a/lib/system-quote.c
++++ b/lib/system-quote.c
+@@ -20,8 +20,8 @@
+ /* Specification.  */
+ #include "system-quote.h"
+ 
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ #include "sh-quote.h"
+ #include "xalloc.h"
+diff --git a/lib/system-quote.h b/lib/system-quote.h
+index 33a6131..539a7dc 100644
+--- a/lib/system-quote.h
++++ b/lib/system-quote.h
+@@ -51,7 +51,7 @@
+  #error "Please include config.h first."
+ #endif
+ 
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/tempname.c b/lib/tempname.c
+index cd6020c..6e3b518 100644
+--- a/lib/tempname.c
++++ b/lib/tempname.c
+@@ -22,7 +22,7 @@
+ 
+ #include <errno.h>
+ 
+-#include <stdio.h>
++#include "lib/stdio.h"
+ #ifndef TMP_MAX
+ # define TMP_MAX 238328
+ #endif
+@@ -36,14 +36,14 @@
+ # error report this to bug-gnulib@gnu.org
+ #endif
+ 
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+-#include <fcntl.h>
+-#include <stdint.h>
+-#include <sys/random.h>
+-#include <sys/stat.h>
+-#include <time.h>
++#include "lib/fcntl.h"
++#include "lib/stdint.h"
++#include "lib/sys/random.h"
++#include "lib/sys/stat.h"
++#include "lib/time.h"
+ 
+ #if _LIBC
+ # define struct_stat64 struct __stat64_t64
+diff --git a/lib/tempname.h b/lib/tempname.h
+index 6820110..7040943 100644
+--- a/lib/tempname.h
++++ b/lib/tempname.h
+@@ -20,7 +20,7 @@
+ #ifndef GL_TEMPNAME_H
+ # define GL_TEMPNAME_H
+ 
+-# include <stdio.h>
++# include "lib/stdio.h"
+ 
+ # ifdef __GT_FILE
+ #  define GT_FILE     __GT_FILE
+diff --git a/lib/time_r.c b/lib/time_r.c
+index 15d65d5..73bb483 100644
+--- a/lib/time_r.c
++++ b/lib/time_r.c
+@@ -19,7 +19,7 @@
+ 
+ #include <config.h>
+ 
+-#include <time.h>
++#include "lib/time.h"
+ 
+ /* The replacement functions in this file are only used on native Windows.
+    They are multithread-safe, because the gmtime() and localtime() functions
+diff --git a/lib/time_rz.c b/lib/time_rz.c
+index 125f4e2..6f5ca46 100644
+--- a/lib/time_rz.c
++++ b/lib/time_rz.c
+@@ -25,7 +25,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <time.h>
++#include "lib/time.h"
+ 
+ #if NEED_TIMEZONE_NULL_SUPPORT          /* Android API level >= 35 */
+ 
+@@ -52,9 +52,9 @@ mktime_z (timezone_t tz, struct tm *tm)
+ #else
+ 
+ # include <errno.h>
+-# include <stddef.h>
+-# include <stdlib.h>
+-# include <string.h>
++# include "lib/stddef.h"
++# include "lib/stdlib.h"
++# include "lib/string.h"
+ 
+ # include "flexmember.h"
+ # include "idx.h"
+diff --git a/lib/timegm.c b/lib/timegm.c
+index 4c2615b..64f1603 100644
+--- a/lib/timegm.c
++++ b/lib/timegm.c
+@@ -21,7 +21,7 @@
+ # include <libc-config.h>
+ #endif
+ 
+-#include <time.h>
++#include "lib/time.h"
+ #include <errno.h>
+ 
+ #include "mktime-internal.h"
+diff --git a/lib/timespec.h b/lib/timespec.h
+index 138467e..4cbbedc 100644
+--- a/lib/timespec.h
++++ b/lib/timespec.h
+@@ -25,7 +25,7 @@
+  #error "Please include config.h first."
+ #endif
+ 
+-#include <time.h>
++#include "lib/time.h"
+ 
+ _GL_INLINE_HEADER_BEGIN
+ #ifndef _GL_TIMESPEC_INLINE
+diff --git a/lib/timespec_get.c b/lib/timespec_get.c
+index da71c7d..f5bba8c 100644
+--- a/lib/timespec_get.c
++++ b/lib/timespec_get.c
+@@ -17,7 +17,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <time.h>
++#include "lib/time.h"
+ 
+ #include "timespec.h"
+ 
+diff --git a/lib/tzset.c b/lib/tzset.c
+index 798df57..4936f36 100644
+--- a/lib/tzset.c
++++ b/lib/tzset.c
+@@ -20,12 +20,12 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <time.h>
++#include "lib/time.h"
+ 
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ #if defined _WIN32 && ! defined __CYGWIN__
+-# include <wchar.h>
++# include "lib/wchar.h"
+ #endif
+ 
+ void
+diff --git a/lib/unistd.c b/lib/unistd.c
+index e662558..6f54a97 100644
+--- a/lib/unistd.c
++++ b/lib/unistd.c
+@@ -18,5 +18,5 @@
+ #define _GL_UNISTD_INLINE _GL_EXTERN_INLINE
+ #include <config.h>
+ 
+-#include <unistd.h>
++#include "lib/unistd.h"
+ typedef int dummy;
+diff --git a/lib/unistr/u-cpy.h b/lib/unistr/u-cpy.h
+index 447c65a..792a4c4 100644
+--- a/lib/unistr/u-cpy.h
++++ b/lib/unistr/u-cpy.h
+@@ -15,7 +15,7 @@
+    You should have received a copy of the GNU Lesser General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
+ 
+-#include <string.h>
++#include "lib/string.h"
+ 
+ UNIT *
+ FUNC (UNIT *dest, const UNIT *src, size_t n)
+diff --git a/lib/unlocked-io.h b/lib/unlocked-io.h
+index 69ea664..7b0e697 100644
+--- a/lib/unlocked-io.h
++++ b/lib/unlocked-io.h
+@@ -36,7 +36,7 @@
+ #  error "Please include config.h first."
+ # endif
+ 
+-# include <stdio.h>
++# include "lib/stdio.h"
+ 
+ # if HAVE_DECL_CLEARERR_UNLOCKED || defined clearerr_unlocked
+ #  undef clearerr
+diff --git a/lib/unsetenv.c b/lib/unsetenv.c
+index d38ed37..fbd3072 100644
+--- a/lib/unsetenv.c
++++ b/lib/unsetenv.c
+@@ -21,15 +21,15 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ #include <errno.h>
+ #if !_LIBC
+ # define __set_errno(ev) ((errno) = (ev))
+ #endif
+ 
+-#include <string.h>
+-#include <unistd.h>
++#include "lib/string.h"
++#include "lib/unistd.h"
+ 
+ #if !_LIBC
+ # define __environ      environ
+diff --git a/lib/verify.h b/lib/verify.h
+index 96fde0b..c80d3b2 100644
+--- a/lib/verify.h
++++ b/lib/verify.h
+@@ -48,7 +48,7 @@
+    system headers, defines a conflicting _Static_assert that is no
+    better than ours; override it.  */
+ #ifndef _GL_HAVE__STATIC_ASSERT
+-# include <stddef.h>
++# include "lib/stddef.h"
+ # undef _Static_assert
+ #endif
+ 
+@@ -375,7 +375,7 @@ template <int w>
+ #elif 1200 <= _MSC_VER
+ # define assume(R) __assume (R)
+ #elif 202311 <= __STDC_VERSION__
+-# include <stddef.h>
++# include "lib/stddef.h"
+ # define assume(R) ((R) ? (void) 0 : unreachable ())
+ #elif (defined GCC_LINT || defined lint) && _GL_HAS_BUILTIN_TRAP
+   /* Doing it this way helps various packages when configured with
+diff --git a/lib/version-etc.c b/lib/version-etc.c
+index 703d7fc..0d31890 100644
+--- a/lib/version-etc.c
++++ b/lib/version-etc.c
+@@ -22,7 +22,7 @@
+ #include "version-etc.h"
+ 
+ #include <stdarg.h>
+-#include <stdio.h>
++#include "lib/stdio.h"
+ 
+ #if USE_UNLOCKED_IO
+ # include "unlocked-io.h"
+diff --git a/lib/version-etc.h b/lib/version-etc.h
+index d6ce42c..1be1dd8 100644
+--- a/lib/version-etc.h
++++ b/lib/version-etc.h
+@@ -25,7 +25,7 @@
+ # endif
+ 
+ # include <stdarg.h>
+-# include <stdio.h>
++# include "lib/stdio.h"
+ 
+ # ifdef __cplusplus
+ extern "C"
+diff --git a/lib/wcrtomb.c b/lib/wcrtomb.c
+index c9ebcf0..5300c29 100644
+--- a/lib/wcrtomb.c
++++ b/lib/wcrtomb.c
+@@ -18,10 +18,10 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <wchar.h>
++#include "lib/wchar.h"
+ 
+ #include <errno.h>
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ 
+ size_t
+diff --git a/lib/wctype-h.c b/lib/wctype-h.c
+index 098014a..f9005db 100644
+--- a/lib/wctype-h.c
++++ b/lib/wctype-h.c
+@@ -20,4 +20,4 @@
+ #define _GL_WCTYPE_INLINE _GL_EXTERN_INLINE
+ #include <config.h>
+ 
+-#include <wctype.h>
++#include "lib/wctype.h"
+diff --git a/lib/wctype.c b/lib/wctype.c
+index b421ad3..a74c3df 100644
+--- a/lib/wctype.c
++++ b/lib/wctype.c
+@@ -18,8 +18,8 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <wctype.h>
++#include "lib/wctype.h"
+ 
+-#include <string.h>
++#include "lib/string.h"
+ 
+ #include "wctype-impl.h"
+diff --git a/lib/wcwidth.c b/lib/wcwidth.c
+index 6e7141d..fab7d0c 100644
+--- a/lib/wcwidth.c
++++ b/lib/wcwidth.c
+@@ -17,10 +17,10 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <wchar.h>
++#include "lib/wchar.h"
+ 
+ /* Get iswprint.  */
+-#include <wctype.h>
++#include "lib/wctype.h"
+ 
+ #include "localcharset.h"
+ #include "streq.h"
+diff --git a/lib/windows-mutex.c b/lib/windows-mutex.c
+index 87b7573..4446fea 100644
+--- a/lib/windows-mutex.c
++++ b/lib/windows-mutex.c
+@@ -23,7 +23,7 @@
+ #include "windows-mutex.h"
+ 
+ #include <errno.h>
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ void
+ glwthread_mutex_init (glwthread_mutex_t *mutex)
+diff --git a/lib/windows-once.c b/lib/windows-once.c
+index bd9e672..acd0828 100644
+--- a/lib/windows-once.c
++++ b/lib/windows-once.c
+@@ -22,7 +22,7 @@
+ /* Specification.  */
+ #include "windows-once.h"
+ 
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ void
+ glwthread_once (glwthread_once_t *once_control, void (*initfunction) (void))
+diff --git a/lib/windows-rwlock.c b/lib/windows-rwlock.c
+index 313f14c..b46677f 100644
+--- a/lib/windows-rwlock.c
++++ b/lib/windows-rwlock.c
+@@ -23,7 +23,7 @@
+ #include "windows-rwlock.h"
+ 
+ #include <errno.h>
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+ /* Don't assume that UNICODE is not defined.  */
+ #undef CreateEvent
+diff --git a/lib/wmemchr.c b/lib/wmemchr.c
+index 741b0eb..d8770b3 100644
+--- a/lib/wmemchr.c
++++ b/lib/wmemchr.c
+@@ -18,6 +18,6 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <wchar.h>
++#include "lib/wchar.h"
+ 
+ #include "wmemchr-impl.h"
+diff --git a/lib/wmempcpy.c b/lib/wmempcpy.c
+index 5883d42..5d0ed89 100644
+--- a/lib/wmempcpy.c
++++ b/lib/wmempcpy.c
+@@ -17,7 +17,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <wchar.h>
++#include "lib/wchar.h"
+ 
+ /* Copy N wide characters of SRC to DEST.
+    Return pointer to wide characters after the last written wide character.  */
+diff --git a/lib/xalloc-die.c b/lib/xalloc-die.c
+index db1ee8f..6e80935 100644
+--- a/lib/xalloc-die.c
++++ b/lib/xalloc-die.c
+@@ -20,9 +20,9 @@
+ 
+ #include "xalloc.h"
+ 
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+-#include <error.h>
++#include "lib/error.h"
+ #include "exitfail.h"
+ 
+ #include "gettext.h"
+diff --git a/lib/xalloc-oversized.h b/lib/xalloc-oversized.h
+index 0f66bd0..a1c7a87 100644
+--- a/lib/xalloc-oversized.h
++++ b/lib/xalloc-oversized.h
+@@ -18,8 +18,8 @@
+ #ifndef XALLOC_OVERSIZED_H_
+ #define XALLOC_OVERSIZED_H_
+ 
+-#include <stddef.h>
+-#include <stdint.h>
++#include "lib/stddef.h"
++#include "lib/stdint.h"
+ 
+ /* True if N * S does not fit into both ptrdiff_t and size_t.
+    N and S should be nonnegative and free of side effects.
+diff --git a/lib/xalloc.h b/lib/xalloc.h
+index 438e5ca..efca978 100644
+--- a/lib/xalloc.h
++++ b/lib/xalloc.h
+@@ -25,8 +25,8 @@
+  #error "Please include config.h first."
+ #endif
+ 
+-#include <stddef.h>
+-#include <stdlib.h>
++#include "lib/stddef.h"
++#include "lib/stdlib.h"
+ 
+ #if GNULIB_XALLOC
+ # include "idx.h"
+diff --git a/lib/xfreopen.c b/lib/xfreopen.c
+index 6f775bb..a7c11b8 100644
+--- a/lib/xfreopen.c
++++ b/lib/xfreopen.c
+@@ -18,7 +18,7 @@
+ #include "xfreopen.h"
+ 
+ #include <errno.h>
+-#include <error.h>
++#include "lib/error.h"
+ #include "exitfail.h"
+ #include "quote.h"
+ 
+diff --git a/lib/xfreopen.h b/lib/xfreopen.h
+index bdebf8e..e89c1cf 100644
+--- a/lib/xfreopen.h
++++ b/lib/xfreopen.h
+@@ -14,7 +14,7 @@
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
+ 
+-#include <stdio.h>
++#include "lib/stdio.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/xmalloc.c b/lib/xmalloc.c
+index 8a71580..ed754f5 100644
+--- a/lib/xmalloc.c
++++ b/lib/xmalloc.c
+@@ -24,10 +24,10 @@
+ #include "ialloc.h"
+ #include "minmax.h"
+ 
+-#include <stdckdint.h>
+-#include <stdlib.h>
+-#include <stdint.h>
+-#include <string.h>
++#include "lib/stdckdint.h"
++#include "lib/stdlib.h"
++#include "lib/stdint.h"
++#include "lib/string.h"
+ 
+ static void * _GL_ATTRIBUTE_PURE
+ check_nonnull (void *p)
+diff --git a/lib/xstdopen.c b/lib/xstdopen.c
+index b6dca48..eaa3396 100644
+--- a/lib/xstdopen.c
++++ b/lib/xstdopen.c
+@@ -20,7 +20,7 @@
+ #include "xstdopen.h"
+ 
+ #include "stdopen.h"
+-#include <error.h>
++#include "lib/error.h"
+ #include "exitfail.h"
+ 
+ #include "gettext.h"
+diff --git a/lib/xstrtol.c b/lib/xstrtol.c
+index 8d4b6a4..cfe9c22 100644
+--- a/lib/xstrtol.c
++++ b/lib/xstrtol.c
+@@ -30,15 +30,15 @@
+ 
+ #include "xstrtol.h"
+ 
+-#include <ctype.h>
++#include "lib/ctype.h"
+ #include <errno.h>
+-#include <limits.h>
+-#include <stdckdint.h>
+-#include <stdlib.h>
+-#include <string.h>
++#include "lib/limits.h"
++#include "lib/stdckdint.h"
++#include "lib/stdlib.h"
++#include "lib/string.h"
+ 
+ #if XSTRTOL_INCLUDE_INTTYPES_H
+-# include <inttypes.h>
++# include "lib/inttypes.h"
+ #endif
+ 
+ #include "intprops.h"
+diff --git a/lib/xstrtol.h b/lib/xstrtol.h
+index 78bdffa..cd25454 100644
+--- a/lib/xstrtol.h
++++ b/lib/xstrtol.h
+@@ -20,7 +20,7 @@
+ #define XSTRTOL_H_ 1
+ 
+ /* Get intmax_t, uintmax_t.  */
+-#include <stdint.h>
++#include "lib/stdint.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/src/analyze.c b/src/analyze.c
+index dae6d00..b76e9dc 100644
+--- a/src/analyze.c
++++ b/src/analyze.c
+@@ -22,7 +22,7 @@
+ 
+ #include <cmpbuf.h>
+ #include <diagnose.h>
+-#include <error.h>
++#include "lib/error.h"
+ #include <file-type.h>
+ #include <xalloc.h>
+ 
+diff --git a/src/cmp.c b/src/cmp.c
+index 2482708..6507926 100644
+--- a/src/cmp.c
++++ b/src/cmp.c
+@@ -24,7 +24,7 @@
+ #include <c-stack.h>
+ #include <cmpbuf.h>
+ #include <diagnose.h>
+-#include <error.h>
++#include "lib/error.h"
+ #include <exitfail.h>
+ #include <file-type.h>
+ #include <getopt.h>
+@@ -37,7 +37,7 @@
+ #include <xstdopen.h>
+ #include <xstrtol.h>
+ 
+-#include <stdio.h>
++#include "lib/stdio.h"
+ 
+ /* The official name of this program (e.g., no 'g' prefix).  */
+ static char const PROGRAM_NAME[] = "cmp";
+diff --git a/src/diff.c b/src/diff.c
+index 6e1bbc5..33089b9 100644
+--- a/src/diff.c
++++ b/src/diff.c
+@@ -20,7 +20,7 @@
+ 
+ #define DIFF_INLINE _GL_EXTERN_INLINE
+ #include "diff.h"
+-#include "paths.h"
++#include "src/paths.h"
+ 
+ #include <binary-io.h>
+ #include <c-ctype.h>
+@@ -28,7 +28,7 @@
+ #include <careadlinkat.h>
+ #include <diagnose.h>
+ #include <dirname.h>
+-#include <error.h>
++#include "lib/error.h"
+ #include <exclude.h>
+ #include <exitfail.h>
+ #include <file-type.h>
+diff --git a/src/diff.h b/src/diff.h
+index aaa2acf..73d1c6b 100644
+--- a/src/diff.h
++++ b/src/diff.h
+@@ -19,8 +19,8 @@
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
+ 
+ #include "system.h"
+-#include <regex.h>
+-#include <stdio.h>
++#include "lib/regex.h"
++#include "lib/stdio.h"
+ #include <unlocked-io.h>
+ 
+ _GL_INLINE_HEADER_BEGIN
+diff --git a/src/diff3.c b/src/diff3.c
+index 7ac046a..3b09334 100644
+--- a/src/diff3.c
++++ b/src/diff3.c
+@@ -31,7 +31,7 @@
+ #include <c-stack.h>
+ #include <cmpbuf.h>
+ #include <diagnose.h>
+-#include <error.h>
++#include "lib/error.h"
+ #include <exitfail.h>
+ #include <file-type.h>
+ #include <getopt.h>
+@@ -44,7 +44,7 @@
+ #include <xfreopen.h>
+ #include <xstdopen.h>
+ 
+-#include <stdio.h>
++#include "lib/stdio.h"
+ 
+ /* The official name of this program (e.g., no 'g' prefix).  */
+ static char const PROGRAM_NAME[] = "diff3";
+diff --git a/src/dir.c b/src/dir.c
+index c94ef00..c4e9e44 100644
+--- a/src/dir.c
++++ b/src/dir.c
+@@ -22,7 +22,7 @@
+ 
+ #include <diagnose.h>
+ #include <dirname.h>
+-#include <error.h>
++#include "lib/error.h"
+ #include <exclude.h>
+ #include <filenamecat.h>
+ #include <mcel.h>
+diff --git a/src/io.c b/src/io.c
+index eba4aba..d84994a 100644
+--- a/src/io.c
++++ b/src/io.c
+@@ -26,8 +26,8 @@
+ #include <mcel.h>
+ #include <xalloc.h>
+ 
+-#include <ctype.h>
+-#include <uchar.h>
++#include "lib/ctype.h"
++#include "lib/uchar.h"
+ 
+ /* The type of a hash value.  */
+ typedef size_t hash_value;
+@@ -1061,7 +1061,7 @@ prepare_text (struct file_data *current)
+     {
+       char *srclim = p + buffered;
+       *srclim = '\r';
+-      char *dst = rawmemchr (p, '\r');
++      char *dst = memchr (p, '\r', buffered + 1);
+ 
+       for (char const *src = dst; src != srclim; src++)
+         {
+diff --git a/src/sdiff.c b/src/sdiff.c
+index 7734a82..ae82406 100644
+--- a/src/sdiff.c
++++ b/src/sdiff.c
+@@ -21,14 +21,14 @@
+ #include "system.h"
+ #include "paths.h"
+ 
+-#include <stdio.h>
++#include "lib/stdio.h"
+ #include <unlocked-io.h>
+ 
+ #include <c-ctype.h>
+ #include <c-stack.h>
+ #include <dirname.h>
+ #include <diagnose.h>
+-#include <error.h>
++#include "lib/error.h"
+ #include <exitfail.h>
+ #include <file-type.h>
+ #include <getopt.h>
+diff --git a/src/system.h b/src/system.h
+index 19a087d..e4b6359 100644
+--- a/src/system.h
++++ b/src/system.h
+@@ -22,37 +22,37 @@
+ 
+ #include <verify.h>
+ 
+-#include <sys/types.h>
++#include "lib/sys/types.h"
+ 
+-#include <sys/stat.h>
++#include "lib/sys/stat.h"
+ #include <stat-macros.h>
+ #include <stat-size.h>
+ #include <stat-time.h>
+ #include <timespec.h>
+ 
+-#include <unistd.h>
++#include "lib/unistd.h"
+ 
+-#include <fcntl.h>
+-#include <time.h>
++#include "lib/fcntl.h"
++#include "lib/time.h"
+ 
+-#include <sys/wait.h>
++#include "lib/sys/wait.h"
+ 
+-#include <dirent.h>
++#include "lib/dirent.h"
+ #ifndef _D_EXACT_NAMLEN
+ # define _D_EXACT_NAMLEN(dp) strlen ((dp)->d_name)
+ #endif
+ 
+-#include <stdlib.h>
++#include "lib/stdlib.h"
+ 
+-#include <inttypes.h>
+-#include <limits.h>
+-#include <locale.h>
+-#include <stdbit.h>
+-#include <stdckdint.h>
+-#include <stddef.h>
+-#include <string.h>
++#include "lib/inttypes.h"
++#include "lib/limits.h"
++#include "lib/locale.h"
++#include "lib/stdbit.h"
++#include "lib/stdckdint.h"
++#include "lib/stddef.h"
++#include "lib/string.h"
+ 
+-#include <gettext.h>
++#include "lib/gettext.h"
+ #if ! ENABLE_NLS
+ # undef textdomain
+ # define textdomain(Domainname) /* empty */
+@@ -65,7 +65,7 @@
+ 
+ #include <errno.h>
+ 
+-#include <signal.h>
++#include "lib/signal.h"
+ #if !defined SIGCHLD && defined SIGCLD
+ # define SIGCHLD SIGCLD
+ #endif
+diff --git a/src/util.c b/src/util.c
+index a3dc315..5020b09 100644
+--- a/src/util.c
++++ b/src/util.c
+@@ -23,7 +23,7 @@
+ #include <argmatch.h>
+ #include <diagnose.h>
+ #include <dirname.h>
+-#include <error.h>
++#include "lib/error.h"
+ #include <flexmember.h>
+ #include <mcel.h>
+ #include <quotearg.h>
+@@ -31,7 +31,7 @@
+ #include <xalloc.h>
+ 
+ #include <stdarg.h>
+-#include <signal.h>
++#include "lib/signal.h"
+ 
+ /* Use SA_NOCLDSTOP as a proxy for whether the sigaction machinery is
+    present.  */

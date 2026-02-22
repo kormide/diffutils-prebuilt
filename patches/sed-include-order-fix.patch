@@ -1,0 +1,120 @@
+diff --git a/basicdefs.h b/basicdefs.h
+index f4f6dcd..06ca6cf 100644
+--- a/basicdefs.h
++++ b/basicdefs.h
+@@ -17,13 +17,13 @@
+ #ifndef BASICDEFS_H
+ #define BASICDEFS_H
+ 
+-#include <alloca.h>
+-#include <wchar.h>
+-#include <locale.h>
+-#include <wctype.h>
++#include "lib/alloca.h"
++#include "lib/wchar.h"
++#include "lib/locale.h"
++#include "lib/wctype.h"
+ #include <stdbool.h>
+ 
+-#include <gettext.h>
++#include "lib/gettext.h"
+ #define N_(String) gettext_noop(String)
+ #define _(String) gettext(String)
+ 
+diff --git a/lib/binary-io.h b/lib/binary-io.h
+index 46f5bd7..727ca10 100644
+--- a/lib/binary-io.h
++++ b/lib/binary-io.h
+@@ -19,7 +19,7 @@
+ 
+ /* For systems that distinguish between text and binary I/O.
+    O_BINARY is guaranteed by the gnulib <fcntl.h>. */
+-#include <fcntl.h>
++#include "lib/fcntl.h"
+ 
+ /* The MSVC7 <stdio.h> doesn't like to be included after '#define fileno ...',
+    so we include it here first.  */
+diff --git a/lib/error.h b/lib/error.h
+index d554fbf..6ce7e60 100644
+--- a/lib/error.h
++++ b/lib/error.h
+@@ -20,7 +20,7 @@
+ #define _ERROR_H 1
+ 
+ /* Get _GL_ATTRIBUTE_SPEC_PRINTF_STANDARD, _GL_ATTRIBUTE_SPEC_PRINTF_SYSTEM.  */
+-#include <stdio.h>
++#include "lib/stdio.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/lib/fcntl.c b/lib/fcntl.c
+index 6f2f921..9f98017 100644
+--- a/lib/fcntl.c
++++ b/lib/fcntl.c
+@@ -19,7 +19,7 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <fcntl.h>
++#include "lib/fcntl.h"
+ 
+ #include <errno.h>
+ #include <limits.h>
+diff --git a/lib/hard-locale.c b/lib/hard-locale.c
+index 1b61606..e96c5f6 100644
+--- a/lib/hard-locale.c
++++ b/lib/hard-locale.c
+@@ -20,7 +20,7 @@
+ 
+ #include "hard-locale.h"
+ 
+-#include <locale.h>
++#include "lib/locale.h"
+ #include <string.h>
+ 
+ bool
+diff --git a/lib/nl_langinfo.c b/lib/nl_langinfo.c
+index 8efc3ea..f76a360 100644
+--- a/lib/nl_langinfo.c
++++ b/lib/nl_langinfo.c
+@@ -17,9 +17,9 @@
+ #include <config.h>
+ 
+ /* Specification.  */
+-#include <langinfo.h>
++#include "lib/langinfo.h"
+ 
+-#include <locale.h>
++#include "lib/locale.h"
+ #include <stdlib.h>
+ #include <string.h>
+ #if defined _WIN32 && ! defined __CYGWIN__
+diff --git a/lib/regex.c b/lib/regex.c
+index 4877f88..f5d0914 100644
+--- a/lib/regex.c
++++ b/lib/regex.c
+@@ -69,9 +69,9 @@
+ /* On some systems, limits.h sets RE_DUP_MAX to a lower value than
+    GNU regex allows.  Include it before <regex.h>, which correctly
+    #undefs RE_DUP_MAX and sets it to the right value.  */
+-#include <limits.h>
++#include "lib/limits.h"
+ 
+-#include <regex.h>
++#include "lib/regex.h"
+ #include "regex_internal.h"
+ 
+ #include "regex_internal.c"
+diff --git a/sed/utils.h b/sed/utils.h
+index 1c65b32..9f6f2b2 100644
+--- a/sed/utils.h
++++ b/sed/utils.h
+@@ -14,7 +14,7 @@
+ 
+     You should have received a copy of the GNU General Public License
+     along with this program; If not, see <https://www.gnu.org/licenses/>. */
+ 
+-#include <stdio.h>
++#include "lib/stdio.h"
+ 
+ #include "basicdefs.h"

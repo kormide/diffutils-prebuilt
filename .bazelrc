@@ -1,0 +1,23 @@
+common --enable_platform_specific_config
+
+# Determines whether C++ binaries will be linked dynamically, interacting with the linkstatic attribute on common rules.
+# off: Links all targets in mostly static mode. If -static is set in linkopts, targets will change to fully static.
+common --dynamic_mode=off
+
+# Don't clobber bazel-out/[platform]/bin
+common --experimental_platform_in_output_dir
+
+common --incompatible_strict_action_env
+common --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
+common --repo_env=BAZEL_NO_APPLE_CPP_TOOLCHAIN=1
+
+common --remote_download_toplevel
+common --nobuild_runfile_links
+common --remote_timeout=120
+common --jobs=1200
+
+common:release -c opt
+common:release --strip=always
+common:release --stripopt=--strip-all
+common:release --features=thin_lto
+common:release --copt=-flto=thin
