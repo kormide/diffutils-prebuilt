@@ -1,0 +1,33 @@
+load("@bazel_lib//lib:transitions.bzl", "platform_transition_filegroup")
+
+PLATFORMS = [
+    "@llvm//platforms:linux_x86_64_gnu.2.28",
+    "@llvm//platforms:linux_arm64_gnu.2.28",
+    "@llvm//platforms:macos_amd64",
+    "@llvm//platforms:macos_arm64",
+    "@llvm//platforms:windows_amd64",
+]
+
+[
+    platform_transition_filegroup(
+        name = "for_{}".format(
+            p.split(":")[1],
+        ),
+        srcs = [
+            "@diffutils//:cmp",
+            "@diffutils//:diff",
+            "@diffutils//:diff3",
+            "@diffutils//:sdiff",
+        ],
+        tags = ["manual"],
+        target_platform = p,
+    )
+    for p in PLATFORMS
+]
+
+filegroup(
+    name = "for_all_platforms",
+    srcs = [":for_{}".format(
+        p.split(":")[1],
+    ) for p in PLATFORMS],
+)
