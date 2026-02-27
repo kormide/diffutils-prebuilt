@@ -48,6 +48,7 @@ archive_override(
         # upstream @sed dependency fails to build on a windows runner,
         # so this can't be added to the BCR yet
         "patches/windows_amd64.patch",
+        "patches/windows_arm64.patch",
     ]
 )
 

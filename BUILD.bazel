@@ -6,6 +6,7 @@ PLATFORMS = [
     "@llvm//platforms:macos_amd64",
     "@llvm//platforms:macos_arm64",
     "@llvm//platforms:windows_amd64",
+    "@llvm//platforms:windows_arm64",
 ]
 
 [
