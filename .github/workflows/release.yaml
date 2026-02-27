@@ -1,0 +1,51 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+      - name: build
+        run: |
+          bazel build --config=ci --config=release //...
+      - name: collect
+        run: |
+          mv bazel-out/linux_x86_64_gnu.2.28-opt/bin/external/diffutils+/src/cmp cmp_linux_amd64
+          mv bazel-out/linux_x86_64_gnu.2.28-opt/bin/external/diffutils+/src/diff diff_linux_amd64
+          mv bazel-out/linux_x86_64_gnu.2.28-opt/bin/external/diffutils+/src/diff3 diff3_linux_amd64
+          mv bazel-out/linux_x86_64_gnu.2.28-opt/bin/external/diffutils+/src/sdiff sdiff_linux_amd64
+          mv bazel-out/linux_arm64_gnu.2.28-opt/bin/external/diffutils+/src/cmp cmp_linux_arm64
+          mv bazel-out/linux_arm64_gnu.2.28-opt/bin/external/diffutils+/src/diff diff_linux_arm64
+          mv bazel-out/linux_arm64_gnu.2.28-opt/bin/external/diffutils+/src/diff3 diff3_linux_arm64
+          mv bazel-out/linux_arm64_gnu.2.28-opt/bin/external/diffutils+/src/sdiff sdiff_linux_arm64
+          mv bazel-out/macos_amd64-opt/bin/external/diffutils+/src/cmp cmp_darwin_amd64
+          mv bazel-out/macos_amd64-opt/bin/external/diffutils+/src/diff diff_darwin_amd64
+          mv bazel-out/macos_amd64-opt/bin/external/diffutils+/src/diff3 diff3_darwin_amd64
+          mv bazel-out/macos_amd64-opt/bin/external/diffutils+/src/sdiff sdiff_darwin_amd64
+          mv bazel-out/macos_arm64-opt/bin/external/diffutils+/src/cmp cmp_darwin_arm64
+          mv bazel-out/macos_arm64-opt/bin/external/diffutils+/src/diff diff_darwin_arm64
+          mv bazel-out/macos_arm64-opt/bin/external/diffutils+/src/diff3 diff3_darwin_arm64
+          mv bazel-out/macos_arm64-opt/bin/external/diffutils+/src/sdiff sdiff_darwin_arm64
+          mv bazel-out/windows_amd64-opt/bin/external/diffutils+/src/cmp.exe cmp_windows_amd64.exe
+          mv bazel-out/windows_amd64-opt/bin/external/diffutils+/src/diff.exe diff_windows_amd64.exe
+          mv bazel-out/windows_amd64-opt/bin/external/diffutils+/src/diff3.exe diff3_windows_amd64.exe
+          mv bazel-out/windows_amd64-opt/bin/external/diffutils+/src/sdiff.exe sdiff_windows_amd64.exe
+      - name: release
+        uses: softprops/action-gh-release@v2
+        with:
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          files: |
+            cmp*
+            diff*
+            sdiff*
